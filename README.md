@@ -1,0 +1,228 @@
+# AI DevSecOps Sentinel
+
+AI DevSecOps Sentinel is an AI-powered DevOps and DevSecOps engineering assistant that performs contextual repository analysis, security reviews, infrastructure validation, and secure engineering guidance using AI-driven reasoning.
+
+The platform combines:
+
+* Repository-aware security analysis
+* Infrastructure-as-Code inspection
+* Secret and misconfiguration detection
+* Attack surface reasoning
+* Compliance mapping
+* Contextual DevOps/DevSecOps knowledge assistance
+
+---
+
+# 🚀 Features
+
+## Repository Security Analysis
+
+* Full repository security reviews
+* Severity-based findings dashboard
+* Cross-file correlation and observations
+* Expandable per-file analysis cards
+* Repository-wide recommendations
+
+---
+
+## Secret Detection
+
+Detects:
+
+* Hardcoded passwords
+* API tokens
+* AWS access keys
+* Private keys
+* Sensitive credentials
+
+Includes:
+
+* Exact evidence snippets
+* Line numbers
+* Blast radius reasoning
+* Secure remediation guidance
+
+---
+
+## Infrastructure-as-Code Analysis
+
+Supports:
+
+* Terraform
+* Dockerfiles
+* Kubernetes manifests
+* Helm charts
+* CI/CD workflows
+
+Capabilities:
+
+* Misconfiguration detection
+* Open network exposure analysis
+* IAM permission review
+* Insecure defaults identification
+* Security hardening recommendations
+
+---
+
+## AI-Powered Security Reasoning
+
+The platform provides:
+
+* Attack chain analysis
+* Exploitability reasoning
+* Confidence scoring
+* Blast radius analysis
+* Context-aware remediation guidance
+
+Example:
+
+```text
+Hardcoded Secret → Public Exposure → Credential Pivot
+```
+
+---
+
+## Compliance Mapping
+
+Maps findings to:
+
+* CWE
+* OWASP
+* NIST
+* CIS
+* MITRE ATT&CK
+
+---
+
+## Knowledge Assistant
+
+AI DevSecOps Sentinel also functions as a contextual engineering assistant.
+
+Users can ask:
+
+* What is GitOps?
+* Explain ArgoCD
+* Docker security best practices
+* Terraform state management
+* Kubernetes RBAC
+* Zero trust networking
+
+The assistant correlates explanations with uploaded repository context whenever applicable.
+
+---
+
+# 🛠 Supported Technologies
+
+## DevOps
+
+* Docker
+* Kubernetes
+* Helm
+* Terraform
+* GitHub Actions
+* CI/CD pipelines
+* ArgoCD
+* GitOps
+
+## Security
+
+* DevSecOps
+* Shift-left security
+* Infrastructure security
+* Supply chain security
+* Secrets management
+* Secure configuration analysis
+
+---
+
+# 📂 Supported File Types
+
+* Dockerfile
+* `.tf`
+* `.yaml`
+* `.yml`
+* `.json`
+* `.sh`
+* `pom.xml`
+* Helm charts
+* Kubernetes manifests
+* GitHub Actions workflows
+* ZIP repositories
+
+---
+
+# 🧠 Core Capabilities
+
+| Capability              | Description                              |
+| ----------------------- | ---------------------------------------- |
+| Repository Analysis     | Full contextual repository understanding |
+| Security Findings       | AI-generated findings with evidence      |
+| Attack Surface Analysis | Multi-step risk reasoning                |
+| Compliance Mapping      | CWE / OWASP / NIST mapping               |
+| Cross-file Correlation  | Connects findings across files           |
+| Knowledge Assistant     | DevOps and DevSecOps explanations        |
+| AI Remediation          | Secure fix recommendations               |
+| Severity Dashboard      | Critical / High / Medium / Low summaries |
+
+---
+
+# 🎯 Example Use Cases
+
+* Secure Terraform reviews
+* Dockerfile hardening analysis
+* Kubernetes security validation
+* Secret detection in repositories
+* DevSecOps onboarding assistance
+* Internal engineering security reviews
+* Infrastructure risk analysis
+* CI/CD security assessments
+
+---
+
+# 🖥 UI Highlights
+
+* Interactive findings dashboard
+* Expandable file analysis cards
+* Severity counters
+* Suggested follow-up actions
+* AI-generated recommendations
+* Context retention across uploaded files
+* Security and knowledge workflows
+
+---
+
+# 📌 Project Vision
+
+AI DevSecOps Sentinel aims to improve developer experience and security posture by combining:
+
+* AI-assisted reasoning
+* DevOps workflows
+* DevSecOps practices
+* Context-aware repository intelligence
+
+into a single engineering assistant platform.
+
+---
+
+# 📷 Screenshots
+
+![alt text](images/image.png)
+![alt text](images/image-1.png)
+![alt text](images/image-2.png)
+![alt text](images/image-3.png)
+![alt text](images/image-4.png)
+![alt text](images/image-5.png)
+![alt text](images/image-6.png)
+---
+
+# 📄 License
+
+This project is currently a prototype/internal initiative and intended for learning, experimentation, and DevSecOps workflow innovation.
+
+---
+
+# 👨‍💻 Author
+
+Ravi Rajput
+
+DevOps | DevSecOps | AI-Assisted Engineering
