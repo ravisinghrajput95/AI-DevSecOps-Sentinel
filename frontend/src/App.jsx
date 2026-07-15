@@ -1606,6 +1606,26 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
   // ── Step 6: Wire up session persistence hook ───────────
   useSessionPersistence(messages, uploadedFiles, history, repoCtx);
 
+  // ── Reconcile restored session with backend state ──────
+  // The session restore only keeps file NAMES (not contents),
+  // marked as already sent. If the backend restarted, its
+  // in-memory context is empty and those files can never be
+  // re-sent — drop them so the UI doesn't claim context the
+  // backend no longer has.
+  useEffect(() => {
+    fetch("/health")
+      .then(r => r.json())
+      .then(h => {
+        if (h.files_in_memory === 0) {
+          setUploadedFiles(prev => prev.filter(f => !f.sent));
+          setRepoCtx(null);
+          _sentFileHashes.clear();
+          sessionStorage.removeItem("devops_sentinel_hashes");
+        }
+      })
+      .catch(() => {}); // backend down — the send path reports that itself
+  }, []);
+
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
   useEffect(() => {
     if (textareaRef.current) {
