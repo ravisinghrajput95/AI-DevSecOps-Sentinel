@@ -757,19 +757,37 @@ function parseFindingItem(raw, level) {
 // REPO CONTEXT
 // =========================================================
 
-function deriveRepoContext(blocks, uploadedFiles) {
+// Severity counts from verified scanner data — preferred over counts
+// parsed out of the AI's prose whenever a scan ran, so the dashboard
+// reflects tool ground truth even when the AI consolidates findings.
+function countScannerFindings(scannerFindings) {
+  const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, SECRETS: 0 };
+  for (const f of scannerFindings || []) {
+    const sev = f.severity?.toUpperCase();
+    if (counts[sev] !== undefined) counts[sev]++;
+    if (f.tool === "gitleaks") counts.SECRETS++;
+  }
+  return counts;
+}
+
+function deriveRepoContext(blocks, uploadedFiles, scannerFindings) {
   if (!blocks || blocks.length === 0) return null;
   const fileBlocks = blocks.filter(b => b.type === "file_analysis");
   if (fileBlocks.length === 0) return null;
 
   const allFindings = fileBlocks.flatMap(b => b.findings || []);
-  const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, SECRETS: 0 };
+  const hasScanData = (scannerFindings || []).length > 0;
+  const counts = hasScanData
+    ? countScannerFindings(scannerFindings)
+    : { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, SECRETS: 0 };
   const stack = new Set();
 
-  for (const f of allFindings) {
-    const lvl = f.level?.toUpperCase();
-    if (counts[lvl] !== undefined) counts[lvl]++;
-    if (f.category === "SECRETS") counts.SECRETS++;
+  if (!hasScanData) {
+    for (const f of allFindings) {
+      const lvl = f.level?.toUpperCase();
+      if (counts[lvl] !== undefined) counts[lvl]++;
+      if (f.category === "SECRETS") counts.SECRETS++;
+    }
   }
 
   for (const f of fileBlocks) {
@@ -828,13 +846,19 @@ function buildDashboard(blocks) {
   return { counts, totalFiles };
 }
 
-function Dashboard({ blocks }) {
-  const { counts, totalFiles } = buildDashboard(blocks);
-  const total = counts.CRITICAL + counts.HIGH + counts.MEDIUM + counts.LOW;
+function Dashboard({ blocks, scannerFindings }) {
+  const { counts: proseCounts, totalFiles } = buildDashboard(blocks);
   if (totalFiles === 0) return null;
 
+  // Severity numbers come from verified scanner data when a scan ran;
+  // category chips still come from the AI's categorised findings.
+  const hasScanData = (scannerFindings || []).length > 0;
+  const sevCounts = hasScanData ? countScannerFindings(scannerFindings) : proseCounts;
+  const counts = { ...proseCounts, ...sevCounts };
+  const total = counts.CRITICAL + counts.HIGH + counts.MEDIUM + counts.LOW;
+
   const riskLevel = counts.CRITICAL > 0 ? { label: "HIGH RISK", color: "#ff4444" }
-    : counts.HIGH > 3   ? { label: "ELEVATED",  color: "#ff8800" }
+    : counts.HIGH > 0   ? { label: "ELEVATED",  color: "#ff8800" }
     : counts.MEDIUM > 5 ? { label: "MODERATE",  color: "#d29922" }
     : { label: "LOW RISK", color: "#2ea043" };
 
@@ -1312,7 +1336,9 @@ function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatest
     : null;
 
   const hasFileBlocks = parsed?.some(b => b.type === "file_analysis");
-  const repoCtx = hasFileBlocks ? deriveRepoContext(parsed, uploadedFiles || []) : null;
+  const repoCtx = hasFileBlocks
+    ? deriveRepoContext(parsed, uploadedFiles || [], scannerFindings)
+    : null;
 
   // ... rest of ChatMessage unchanged ...
   return (
@@ -1345,7 +1371,7 @@ function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatest
                 ))}
               </div>
             )}
-            <Dashboard blocks={parsed} />
+            <Dashboard blocks={parsed} scannerFindings={scannerFindings} />
             <AttackSurfacePanel blocks={parsed} />
             {parsed.map((block, i) =>
               block.type === "file_analysis"
@@ -1689,7 +1715,7 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
 
       const parsed = parseStructuredResponse(answer);
       if (parsed) {
-        const ctx = deriveRepoContext(parsed, uploadedFiles);
+        const ctx = deriveRepoContext(parsed, uploadedFiles, data.findings || []);
         if (ctx) setRepoCtx(ctx);
       }
 

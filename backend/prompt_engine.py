@@ -1133,12 +1133,26 @@ as verified ground truth:
   the misconfiguration that exposes it, describe combined attack chains.
 - Deduplicate: if two tools or a tool + your own analysis flag the same
   issue, present it once with all evidence.
-- Tag every finding with its origin: [SCANNER-VERIFIED: gitleaks],
-  [SCANNER-VERIFIED: checkov], or [AI-DETECTED] for issues you identified
-  that no scanner reported.
+- Tag every finding with its origin: [SCANNER-VERIFIED: <tool>] or
+  [AI-DETECTED] for issues you identified that no scanner reported.
+- Do NOT silently drop MEDIUM and LOW scanner findings. Cover each one
+  either individually or inside a grouped rollup finding — e.g. one
+  "Missing pod hardening controls" MEDIUM finding that lists the related
+  checks (resource limits, probes, seccomp, readOnlyRootFilesystem) with
+  their rule IDs. Every scanner finding must be accounted for somewhere
+  in your response.
 - NEVER contradict scanner evidence and NEVER invent scanner findings.
 - If a tool is listed as unavailable, note the coverage gap when relevant
   (e.g. "dependency versions were not scanned").
+
+SECRET REDACTION — OVERRIDES ALL EXACT-QUOTE RULES:
+
+For [SECRETS] findings, NEVER reproduce the secret value anywhere in
+your response — not in Evidence, not in code snippets, not in # BAD
+blocks. Show at most the first 4 characters followed by asterisks
+(e.g. access_key = "AKIA****************"). The exact-value citation
+rules below apply to ports, versions, CIDRs, and names — never to
+credential values.
 
 ANALYSIS RULES:
 
