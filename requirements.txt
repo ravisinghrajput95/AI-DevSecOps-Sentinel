@@ -6,3 +6,6 @@ python-dotenv
 requests
 faiss-cpu
 numpy
+
+# dev / test
+pytest

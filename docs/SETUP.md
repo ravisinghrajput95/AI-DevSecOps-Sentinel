@@ -37,6 +37,21 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+#### Install Security Scanners (recommended)
+
+The backend runs deterministic scanners over uploaded files and feeds
+their verified findings to the AI. Without them the app still works,
+but analysis falls back to AI-only reasoning.
+
+```bash
+# macOS
+brew install gitleaks checkov
+
+# Linux
+# gitleaks: https://github.com/gitleaks/gitleaks#installing
+pip install checkov
+```
+
 #### Configure Environment Variables
 
 Create a `.env` file in the root directory:

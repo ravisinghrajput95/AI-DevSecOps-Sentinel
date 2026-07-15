@@ -48,11 +48,34 @@ AI DevSecOps Sentinel is a full-stack application that combines:
 │     ┌───────────────┼───────────────┐                   │
 │     ▼               ▼               ▼                   │
 │  ┌────────┐  ┌──────────┐  ┌────────────┐              │
-│  │   RAG  │  │  Chunker │  │    LLM     │              │
-│  │ (FAISS)│  │          │  │ (OpenAI)   │              │
+│  │   RAG  │  │ Scanners │  │    LLM     │              │
+│  │ (FAISS)│  │ gitleaks │  │ (OpenAI)   │              │
+│  │        │  │ checkov  │  │            │              │
 │  └────────┘  └──────────┘  └────────────┘              │
 └─────────────────────────────────────────────────────────┘
 ```
+
+## Scanner-Grounded Analysis
+
+Uploaded files are persisted to a `workspace/` directory and scanned
+once per upload batch by deterministic tools:
+
+- **gitleaks** — hardcoded secrets (findings are CRITICAL; secret
+  values are redacted before storage)
+- **checkov** — IaC misconfigurations (Terraform, Kubernetes,
+  Dockerfile, Helm, GitHub Actions, docker-compose)
+
+Normalized findings are cached in memory and used two ways:
+
+1. Injected into the file-analysis prompt as a **VERIFIED SCANNER
+   FINDINGS** ground-truth section — the LLM correlates, deduplicates,
+   and prioritizes them, tagging output `[SCANNER-VERIFIED: <tool>]`
+   vs `[AI-DETECTED]`.
+2. Returned as structured JSON in the `/chat` response (`findings`,
+   `scanners`) and rendered by the frontend's scanner findings panel.
+
+Missing scanners degrade gracefully: the pipeline reports them as
+unavailable and the AI notes the coverage gap.
 
 ## Component Architecture
 

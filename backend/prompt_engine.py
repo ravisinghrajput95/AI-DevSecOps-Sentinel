@@ -916,6 +916,43 @@ def build_full_file_context() -> str:
     return result
 
 
+def build_scanner_context() -> str:
+    """
+    Formats the cached deterministic scanner results (gitleaks,
+    checkov) into a compact ground-truth section for MODE 3.
+    """
+    scan = memory.get("scan")
+    if not scan:
+        return (
+            "No deterministic scan was performed "
+            "(no scanner tools available on this system)."
+        )
+
+    lines = []
+    ran = ", ".join(scan.get("tools_run") or []) or "none"
+    missing = ", ".join(scan.get("tools_missing") or []) or "none"
+    lines.append(f"Tools run: {ran} | Tools unavailable: {missing}")
+
+    findings = scan.get("findings") or []
+    if not findings:
+        lines.append(
+            "The scanners reported ZERO findings. Do not invent "
+            "scanner findings — any additional issues you raise "
+            "must be tagged [AI-DETECTED]."
+        )
+        return "\n".join(lines)
+
+    lines.append(f"{len(findings)} verified findings:")
+    for f in findings:
+        evidence = f" (evidence: {f['evidence']})" if f.get("evidence") else ""
+        guideline = f" [guide: {f['guideline']}]" if f.get("guideline") else ""
+        lines.append(
+            f"[{f['severity']}] {f['tool']}/{f['rule_id']} — "
+            f"{f['file']}:{f['line']} — {f['title']}{evidence}{guideline}"
+        )
+    return "\n".join(lines)
+
+
 def build_source_list(results: list) -> str:
     if not results:
         return ""
@@ -1060,6 +1097,7 @@ At the end of your answer, if relevant, offer one line such as:
     uploaded_files = get_uploaded_filenames()
     stack = detect_stack(memory["files"])
     stack_summary = format_stack_summary(stack)
+    scanner_context = build_scanner_context()
 
     return f"""You have been given the REAL, COMPLETE contents of the uploaded files below.
 Analyse them based on their ACTUAL content only.
@@ -1071,6 +1109,9 @@ DETECTED STACK (from uploaded file names):
 UPLOADED FILES — FULL REAL CONTENT:
 {full_file_context}
 ==========================================================
+VERIFIED SCANNER FINDINGS — ground truth from deterministic tools:
+{scanner_context}
+==========================================================
 RAG CONTEXT — MOST RELEVANT CHUNKS FOR THIS QUERY:
 {rag_context}
 ==========================================================
@@ -1081,6 +1122,24 @@ USER QUESTION:
 {user_message}
 ==========================================================
 INSTRUCTIONS — FOLLOW ALL OF THESE EXACTLY:
+
+SCANNER GROUND TRUTH RULES:
+
+The VERIFIED SCANNER FINDINGS section contains output from deterministic
+security tools (gitleaks, checkov) run against the actual files. Treat it
+as verified ground truth:
+- Cover every CRITICAL and HIGH scanner finding in your analysis.
+- Correlate findings across tools and files — connect a leaked secret to
+  the misconfiguration that exposes it, describe combined attack chains.
+- Deduplicate: if two tools or a tool + your own analysis flag the same
+  issue, present it once with all evidence.
+- Tag every finding with its origin: [SCANNER-VERIFIED: gitleaks],
+  [SCANNER-VERIFIED: checkov], or [AI-DETECTED] for issues you identified
+  that no scanner reported.
+- NEVER contradict scanner evidence and NEVER invent scanner findings.
+- If a tool is listed as unavailable, note the coverage gap when relevant
+  (e.g. "dependency versions were not scanned").
+
 ANALYSIS RULES:
 
 Base your ENTIRE answer on the ACTUAL file contents provided above.

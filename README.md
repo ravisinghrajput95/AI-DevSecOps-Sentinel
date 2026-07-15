@@ -64,6 +64,24 @@ Capabilities:
 
 ---
 
+## Scanner-Grounded Findings
+
+Uploaded files are scanned by deterministic security tools before the
+AI ever reasons about them:
+
+* **gitleaks** — hardcoded secret detection (values redacted)
+* **checkov** — IaC misconfiguration checks across Terraform,
+  Kubernetes, Dockerfiles, Helm, and CI/CD workflows
+
+The AI treats scanner output as verified ground truth: it correlates
+findings across tools and files, deduplicates, prioritizes by
+exploitability, and tags every finding `[SCANNER-VERIFIED]` or
+`[AI-DETECTED]` so you always know which claims are tool-backed.
+Verified findings are also returned as structured JSON and rendered
+in a dedicated panel in the UI.
+
+---
+
 ## AI-Powered Security Reasoning
 
 The platform provides:

@@ -5,11 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.prompt_engine import build_prompt
-from backend.file_handler import save_uploaded_files
+from backend.file_handler import save_uploaded_files, clear_workspace
 from backend.llm import ask_openai
 from backend.memory import memory
 from backend.intent_engine import detect_intent
 from backend.rag import clear_rag
+from backend.scanners import scanner_status
 
 app = FastAPI()
 
@@ -47,7 +48,8 @@ class ChatRequest(BaseModel):
 async def health():
     return {
         "status": "ok",
-        "files_in_memory": len(memory["files"])
+        "files_in_memory": len(memory["files"]),
+        "scanners": scanner_status(),
     }
 
 # =========================================================
@@ -233,16 +235,28 @@ async def chat(req: ChatRequest):
         memory["general_mode"] = False
         memory["rag_cache_key"] = None
         memory["rag_results"] = []
+        memory["scan"] = None
         clear_rag()
+        clear_workspace()
         return {
             "response": "Context cleared. Upload new files or ask a fresh question."
         }
 
     # =====================================================
     # BUILD PROMPT + CALL LLM
+    # Scanner findings ride along as structured data so the
+    # frontend can render them independently of the prose.
     # =====================================================
 
     prompt = build_prompt(user_message, req.history)
     answer = ask_openai(prompt, req.history)
 
-    return {"response": answer}
+    scan = memory.get("scan") or {}
+    return {
+        "response": answer,
+        "findings": scan.get("findings", []),
+        "scanners": {
+            "run": scan.get("tools_run", []),
+            "missing": scan.get("tools_missing", []),
+        },
+    }

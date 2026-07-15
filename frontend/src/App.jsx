@@ -1231,10 +1231,77 @@ function FileAnalysisCard({ block }) {
 }
 
 // =========================================================
+// SCANNER FINDINGS PANEL
+// Verified ground truth from deterministic scanners
+// (gitleaks, checkov) — structured data from the backend,
+// rendered independently of the AI's prose.
+// =========================================================
+
+const SEVERITY_COLORS = {
+  CRITICAL: "#ff4444",
+  HIGH: "#ff8800",
+  MEDIUM: "#d29922",
+  LOW: "#58a6ff",
+  INFO: "#8b949e",
+};
+
+function ScannerFindingsPanel({ findings, scannersRun }) {
+  const [open, setOpen] = useState(false);
+  if (!findings?.length) return null;
+
+  const counts = {};
+  for (const f of findings) {
+    const sev = f.severity?.toUpperCase() || "INFO";
+    counts[sev] = (counts[sev] || 0) + 1;
+  }
+
+  return (
+    <div style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: "10px", marginBottom: "12px", overflow: "hidden" }}>
+      <button onClick={() => setOpen(o => !o)} style={{ width: "100%", display: "flex", alignItems: "center", gap: "7px", padding: "10px 14px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left", borderBottom: open ? "1px solid #30363d" : "none" }}>
+        <span style={{ color: "#2ea043", display: "flex", alignItems: "center" }}><ShieldIcon /></span>
+        <span style={{ color: "#e6edf3", fontSize: "12px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.6px" }}>
+          Verified Scanner Findings ({findings.length})
+        </span>
+        {(scannersRun || []).map(t => (
+          <span key={t} style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: "4px", padding: "1px 7px", fontSize: "10px", color: "#8b949e", fontFamily: "monospace" }}>{t}</span>
+        ))}
+        <span style={{ flex: 1 }} />
+        {Object.entries(SEVERITY_COLORS).map(([sev, color]) =>
+          counts[sev] ? (
+            <span key={sev} style={{ background: `${color}1f`, border: `1px solid ${color}55`, borderRadius: "10px", padding: "1px 7px", fontSize: "10px", color, fontWeight: "700" }}>
+              {counts[sev]} {sev.toLowerCase()}
+            </span>
+          ) : null
+        )}
+        <ChevronIcon open={open} />
+      </button>
+      {open && (
+        <div style={{ padding: "8px 10px", maxHeight: "320px", overflowY: "auto" }}>
+          {findings.map((f, i) => {
+            const color = SEVERITY_COLORS[f.severity?.toUpperCase()] || SEVERITY_COLORS.INFO;
+            return (
+              <div key={i} style={{ display: "flex", gap: "8px", alignItems: "baseline", padding: "6px 6px", borderBottom: i < findings.length - 1 ? "1px solid #21262d" : "none", flexWrap: "wrap" }}>
+                <span style={{ background: `${color}1f`, border: `1px solid ${color}55`, borderRadius: "4px", padding: "1px 6px", fontSize: "9px", color, fontWeight: "700", flexShrink: 0 }}>{f.severity}</span>
+                <span style={{ fontSize: "10px", color: "#8b949e", fontFamily: "monospace", flexShrink: 0 }}>{f.tool}/{f.rule_id}</span>
+                <span style={{ fontSize: "11px", color: "#79c0ff", fontFamily: "monospace", flexShrink: 0 }}>{f.file}:{f.line}</span>
+                <span style={{ fontSize: "12px", color: "#c9d1d9", flex: 1, minWidth: "180px" }}>
+                  {f.title}
+                  {f.evidence && <span style={{ color: "#d29922", fontFamily: "monospace", fontSize: "11px" }}> — {f.evidence}</span>}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =========================================================
 // CHAT MESSAGE
 // =========================================================
 
-function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatestAssistant }) {
+function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatestAssistant, scannerFindings, scannersRun }) {
   const isUser = role === "user";
 
   // Only parse structured file analysis for the LATEST assistant message.
@@ -1267,6 +1334,9 @@ function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatest
           </div>
         ) : hasFileBlocks ? (
           <div>
+            {isLatestAssistant && (
+              <ScannerFindingsPanel findings={scannerFindings} scannersRun={scannersRun} />
+            )}
             {repoCtx?.memoryCategories?.length > 0 && (
               <div style={{ background: "rgba(46,160,67,0.05)", border: "1px solid rgba(46,160,67,0.15)", borderRadius: "7px", padding: "8px 12px", marginBottom: "12px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
                 <span style={{ fontSize: "9px", color: "#2ea043", textTransform: "uppercase", letterSpacing: "0.8px", fontWeight: "700", marginRight: "4px" }}>✓ Context retained:</span>
@@ -1286,7 +1356,12 @@ function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatest
             {onSend && <DownloadReportButton blocks={parsed} repoCtx={repoCtx} uploadedFiles={uploadedFiles || []} />}
           </div>
         ) : (
-          <MarkdownBlock text={content} />
+          <div>
+            {isLatestAssistant && (
+              <ScannerFindingsPanel findings={scannerFindings} scannersRun={scannersRun} />
+            )}
+            <MarkdownBlock text={content} />
+          </div>
         )}
       </div>
     </div>
@@ -1600,7 +1675,12 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
 
       setMessages(prev => {
         const u = [...prev];
-        u[u.length - 1] = { role: "assistant", content: answer };
+        u[u.length - 1] = {
+          role: "assistant",
+          content: answer,
+          scannerFindings: data.findings || [],
+          scannersRun: data.scanners?.run || [],
+        };
         return u;
       });
     } catch (err) {
@@ -1689,6 +1769,8 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
                   onSend={handleSend}
                   uploadedFiles={uploadedFiles}
                   isLatestAssistant={isLatestAssistant}
+                  scannerFindings={msg.scannerFindings}
+                  scannersRun={msg.scannersRun}
                 />
               );
             })}

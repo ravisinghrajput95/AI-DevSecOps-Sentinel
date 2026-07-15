@@ -6,12 +6,21 @@ import tempfile
 from backend.rag import add_document
 from backend.memory import memory
 from backend.project_memory import project_memory
+from backend.scanners import run_all_scanners
 
-UPLOAD_DIR = "uploads"
-EXTRACT_DIR = "extracted"
+# Ingested files are persisted here so deterministic scanners
+# (gitleaks, checkov) can run over them. Wiped at startup so its
+# lifetime matches the in-memory file store.
+WORKSPACE_DIR = "workspace"
 
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(EXTRACT_DIR, exist_ok=True)
+
+def clear_workspace():
+    if os.path.exists(WORKSPACE_DIR):
+        shutil.rmtree(WORKSPACE_DIR)
+    os.makedirs(WORKSPACE_DIR)
+
+
+clear_workspace()
 
 SUPPORTED_EXTENSIONS = [
     ".py", ".java", ".js", ".ts",
@@ -76,7 +85,7 @@ def read_file_content(filepath):
 
 def ingest_zip(zip_path):
     project_name = os.path.basename(zip_path).replace(".zip", "")
-    extract_path = os.path.join(EXTRACT_DIR, project_name)
+    extract_path = os.path.join(WORKSPACE_DIR, project_name)
 
     if os.path.exists(extract_path):
         shutil.rmtree(extract_path)
@@ -161,7 +170,10 @@ def ingest_zip(zip_path):
 def ingest_single_file(filepath, original_filename, project_name="default"):
     """Ingest a single uploaded file into memory and RAG."""
 
-    if not is_supported_file(filepath):
+    # Check the ORIGINAL filename, not the temp path — extension-less
+    # special files like "Dockerfile" land in temp storage as "xyz.tmp"
+    # and would otherwise always be rejected.
+    if not is_supported_file(original_filename):
         print(f"Unsupported file type: {original_filename}")
         return False
 
@@ -169,6 +181,14 @@ def ingest_single_file(filepath, original_filename, project_name="default"):
     if not content or not content.strip():
         print(f"Empty or unreadable file: {original_filename}")
         return False
+
+    # Persist into the scan workspace so scanners can see it.
+    # Keep the ORIGINAL filename — scanners like checkov and
+    # gitleaks key their rules off names like "Dockerfile"/".tf".
+    workspace_path = os.path.join(
+        WORKSPACE_DIR, os.path.basename(original_filename)
+    )
+    shutil.copyfile(filepath, workspace_path)
 
     memory["files"].append({
         "name": original_filename,
@@ -197,6 +217,7 @@ def save_uploaded_files(files: list, project_name: str = "default"):
     """
     # Build set of already-ingested filenames
     already_ingested = {f.get("name") for f in memory["files"]}
+    ingested_any = False
 
     for file in files:
 
@@ -244,8 +265,17 @@ def save_uploaded_files(files: list, project_name: str = "default"):
                 )
             # Track as ingested
             already_ingested.add(filename)
+            ingested_any = True
         except Exception as e:
             print(f"Ingest error for {filename}: {e}")
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
+
+    # =====================================================
+    # RUN DETERMINISTIC SCANNERS
+    # One scan per upload batch, cached in memory — every
+    # later question reuses these verified findings.
+    # =====================================================
+    if ingested_any:
+        memory["scan"] = run_all_scanners(WORKSPACE_DIR)
