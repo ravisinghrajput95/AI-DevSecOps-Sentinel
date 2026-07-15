@@ -1,5 +1,4 @@
 import os
-import pickle
 import numpy as np
 import faiss
 
@@ -10,37 +9,17 @@ load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-INDEX_FILE = "faiss.index"
-DOC_FILE = "docs.pkl"
 EMBEDDING_DIMENSION = 1536
 
 # =========================================================
-# LOAD / CREATE INDEX
+# IN-MEMORY INDEX
+# Lives and dies with the process — same lifetime as
+# memory["files"], so stale chunks from earlier sessions
+# can never leak back into retrieval via an on-disk index.
 # =========================================================
 
-if os.path.exists(INDEX_FILE):
-    index = faiss.read_index(INDEX_FILE)
-else:
-    index = faiss.IndexFlatL2(EMBEDDING_DIMENSION)
-
-# =========================================================
-# LOAD DOCUMENTS
-# =========================================================
-
-if os.path.exists(DOC_FILE):
-    with open(DOC_FILE, "rb") as f:
-        documents = pickle.load(f)
-else:
-    documents = []
-
-# =========================================================
-# SAVE INDEX
-# =========================================================
-
-def save_index():
-    faiss.write_index(index, INDEX_FILE)
-    with open(DOC_FILE, "wb") as f:
-        pickle.dump(documents, f)
+index = faiss.IndexFlatL2(EMBEDDING_DIMENSION)
+documents = []
 
 # =========================================================
 # CHUNKING
@@ -105,8 +84,6 @@ def add_document(
             })
         except Exception as e:
             print("Embedding error:", e)
-
-    save_index()
 
 # =========================================================
 # PROJECT FILTER
@@ -263,27 +240,6 @@ def build_context(results):
     return "\n\n---\n\n".join(context)
 
 # =========================================================
-# CLEAR PROJECT
-# =========================================================
-
-def clear_project(project_id):
-    global documents, index
-
-    documents = [d for d in documents if d.get("project_id") != project_id]
-    index = faiss.IndexFlatL2(EMBEDDING_DIMENSION)
-
-    for doc in documents:
-        try:
-            embedding = get_embedding(doc["content"])
-            vector = np.array([embedding]).astype("float32")
-            index.add(vector)
-        except Exception as e:
-            print("Rebuild error:", e)
-
-    save_index()
-    print(f"Project cleared: {project_id}")
-
-# =========================================================
 # CLEAR ALL
 # =========================================================
 
@@ -291,5 +247,4 @@ def clear_rag():
     global documents, index
     documents = []
     index = faiss.IndexFlatL2(EMBEDDING_DIMENSION)
-    save_index()
     print("RAG cleared")

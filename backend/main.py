@@ -4,16 +4,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend.prompt_engine import (
-    build_prompt,
-    handle_simple_greeting,
-    is_acknowledgement,
-    is_off_topic,
-)
+from backend.prompt_engine import build_prompt
 from backend.file_handler import save_uploaded_files
 from backend.llm import ask_openai
 from backend.memory import memory
 from backend.intent_engine import detect_intent
+from backend.rag import clear_rag
 
 app = FastAPI()
 
@@ -71,6 +67,9 @@ async def chat(req: ChatRequest):
 
     # =====================================================
     # INTENT DETECTION
+    # All canned intents (greeting, small talk, clear,
+    # acknowledgement, off-topic) are answered here without
+    # ever calling the LLM.
     # =====================================================
 
     intent = detect_intent(user_message)
@@ -79,36 +78,10 @@ async def chat(req: ChatRequest):
     print(f"FILES:   {len(memory['files'])} in memory")
 
     # =====================================================
-    # ACKNOWLEDGEMENT — check FIRST before anything else
-    # Catches: "wassup", "sup", "yo", "ok", "cool",
-    # "great", "thanks", "nice", "awesome", "yep" etc.
-    # Must run before build_prompt to prevent these casual
-    # messages from triggering full file analysis.
-    # =====================================================
-
-    if is_acknowledgement(user_message) or intent == "acknowledgement":
-        if memory["files"]:
-            file_count = len(memory["files"])
-            return {
-                "response": (
-                    f"Ready when you are! I have {file_count} file(s) in context.\n\n"
-                    f"What would you like to dig into next?\n\n"
-                    f"- Security audit\n"
-                    f"- Misconfiguration review\n"
-                    f"- CI/CD analysis\n"
-                    f"- Docker / Kubernetes hardening\n"
-                    f"- Terraform inspection"
-                )
-            }
-        return {
-            "response": "Ready! What DevOps topic can I help you with?"
-        }
-
-    # =====================================================
     # GREETING HANDLER
     # =====================================================
 
-    if intent == "greeting" or handle_simple_greeting(user_message):
+    if intent == "greeting":
         if memory["files"]:
             filenames = ", ".join([
                 f["name"] for f in memory["files"][:3]
@@ -141,13 +114,36 @@ async def chat(req: ChatRequest):
         }
 
     # =====================================================
+    # ACKNOWLEDGEMENT HANDLER
+    # Catches: "ok", "cool", "great", "thanks", "nice",
+    # "awesome", "yep" etc. — never triggers file analysis.
+    # =====================================================
+
+    if intent == "acknowledgement":
+        if memory["files"]:
+            file_count = len(memory["files"])
+            return {
+                "response": (
+                    f"Ready when you are! I have {file_count} file(s) in context.\n\n"
+                    f"What would you like to dig into next?\n\n"
+                    f"- Security audit\n"
+                    f"- Misconfiguration review\n"
+                    f"- CI/CD analysis\n"
+                    f"- Docker / Kubernetes hardening\n"
+                    f"- Terraform inspection"
+                )
+            }
+        return {
+            "response": "Ready! What DevOps topic can I help you with?"
+        }
+
+    # =====================================================
     # OFF-TOPIC HANDLER
     # Catches non-DevOps questions like "who is Geetanjali",
     # "capital of France", "ipl score" etc.
-    # Must run before build_prompt.
     # =====================================================
 
-    if is_off_topic(user_message):
+    if intent == "off_topic":
         return {
             "response": (
                 "That is outside my area — I am a DevOps and DevSecOps AI assistant. "
@@ -225,6 +221,9 @@ async def chat(req: ChatRequest):
 
     # =====================================================
     # CLEAR HANDLER
+    # Clears BOTH the in-memory file store and the RAG
+    # vector index — otherwise previously uploaded chunks
+    # keep leaking into later analyses via retrieval.
     # =====================================================
 
     if intent == "clear":
@@ -232,6 +231,9 @@ async def chat(req: ChatRequest):
         memory["last_topic"] = ""
         memory["last_files"] = []
         memory["general_mode"] = False
+        memory["rag_cache_key"] = None
+        memory["rag_results"] = []
+        clear_rag()
         return {
             "response": "Context cleared. Upload new files or ask a fresh question."
         }
