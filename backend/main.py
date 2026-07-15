@@ -10,6 +10,7 @@ from backend.llm import ask_openai
 from backend.memory import memory
 from backend.intent_engine import detect_intent
 from backend.rag import clear_rag
+from backend.redaction import clear_secrets, scrub_secrets
 from backend.scanners import scanner_status
 
 app = FastAPI()
@@ -238,6 +239,7 @@ async def chat(req: ChatRequest):
         memory["scan"] = None
         clear_rag()
         clear_workspace()
+        clear_secrets()
         return {
             "response": "Context cleared. Upload new files or ask a fresh question."
         }
@@ -249,7 +251,9 @@ async def chat(req: ChatRequest):
     # =====================================================
 
     prompt = build_prompt(user_message, req.history)
-    answer = ask_openai(prompt, req.history)
+    # Code-level redaction: the model sees raw file contents, so its
+    # answer can echo secrets regardless of prompt rules — scrub them.
+    answer = scrub_secrets(ask_openai(prompt, req.history))
 
     scan = memory.get("scan") or {}
     return {

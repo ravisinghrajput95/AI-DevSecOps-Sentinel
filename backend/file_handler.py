@@ -6,6 +6,7 @@ import tempfile
 from backend.rag import add_document
 from backend.memory import memory
 from backend.project_memory import project_memory
+from backend.redaction import harvest_secrets
 from backend.scanners import run_all_scanners
 
 # Ingested files are persisted here so deterministic scanners
@@ -121,6 +122,9 @@ def ingest_zip(zip_path):
 
             relative_path = os.path.relpath(filepath, extract_path)
 
+            # Register credential values for LLM output scrubbing
+            harvest_secrets(content)
+
             # =====================================================
             # STORE FULL REAL CONTENT IN MEMORY
             # No summaries, no truncation of small files
@@ -189,6 +193,9 @@ def ingest_single_file(filepath, original_filename, project_name="default"):
         WORKSPACE_DIR, os.path.basename(original_filename)
     )
     shutil.copyfile(filepath, workspace_path)
+
+    # Register credential values for LLM output scrubbing
+    harvest_secrets(content)
 
     memory["files"].append({
         "name": original_filename,

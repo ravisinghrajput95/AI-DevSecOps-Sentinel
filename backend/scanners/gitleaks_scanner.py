@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 
+from backend.redaction import remember_secret
 from backend.scanners.base import (
     is_available,
     make_finding,
@@ -24,6 +25,11 @@ def parse_report(report: list, workspace_dir: str) -> list:
     """Normalize a gitleaks JSON report (list of leak dicts)."""
     findings = []
     for leak in report or []:
+        # Register the raw value so LLM output can be scrubbed of it.
+        # It stays in this process only — the finding carries the
+        # redacted form.
+        remember_secret(leak.get("Secret", ""))
+
         filepath = leak.get("File", "unknown")
         # Report paths are absolute inside the scanned dir — make relative
         if workspace_dir and filepath.startswith(workspace_dir):
