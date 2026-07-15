@@ -1,11 +1,5 @@
-import os
-from openai import OpenAI
-from dotenv import load_dotenv
+from backend.openai_client import get_client
 from backend.prompt_engine import SYSTEM_PROMPT
-
-load_dotenv()
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 def ask_openai(prompt: str, history: list = []) -> str:
@@ -50,7 +44,7 @@ def ask_openai(prompt: str, history: list = []) -> str:
     # =========================================================
 
     try:
-        response = client.chat.completions.create(
+        response = get_client().chat.completions.create(
             model="gpt-4o",
             messages=messages,
             temperature=0.2,

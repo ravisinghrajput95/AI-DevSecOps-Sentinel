@@ -1,13 +1,7 @@
-import os
 import numpy as np
 import faiss
 
-from openai import OpenAI
-from dotenv import load_dotenv
-
-load_dotenv()
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+from backend.openai_client import get_client
 
 EMBEDDING_DIMENSION = 1536
 
@@ -41,7 +35,7 @@ def chunk_text(text, chunk_size=700, overlap=120):
 # =========================================================
 
 def get_embedding(text):
-    response = client.embeddings.create(
+    response = get_client().embeddings.create(
         model="text-embedding-3-small",
         input=text
     )
