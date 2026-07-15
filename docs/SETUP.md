@@ -45,12 +45,21 @@ but analysis falls back to AI-only reasoning.
 
 ```bash
 # macOS
-brew install gitleaks checkov
+brew install gitleaks checkov trivy hadolint semgrep
+# kubesec has no brew formula — download the release binary:
+# https://github.com/controlplaneio/kubesec/releases
 
 # Linux
 # gitleaks: https://github.com/gitleaks/gitleaks#installing
-pip install checkov
+# trivy:    https://trivy.dev/latest/getting-started/installation/
+# hadolint: https://github.com/hadolint/hadolint#install
+# kubesec:  https://github.com/controlplaneio/kubesec/releases
+pip install checkov semgrep
 ```
+
+Any subset works — missing scanners are reported as coverage gaps,
+and the rest of the pipeline runs normally. First scans are slower
+while trivy downloads its CVE database and semgrep its ruleset.
 
 #### Configure Environment Variables
 

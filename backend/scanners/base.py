@@ -16,10 +16,21 @@
 #   }
 # =========================================================
 
+import os
 import shutil
 import subprocess
 
 SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
+
+
+def find_files(workspace_dir: str, predicate) -> list:
+    """Walk the workspace and return paths matching predicate(filename)."""
+    matches = []
+    for root, _dirs, files in os.walk(workspace_dir):
+        for name in files:
+            if predicate(name):
+                matches.append(os.path.join(root, name))
+    return matches
 
 
 def is_available(binary: str) -> bool:

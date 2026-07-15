@@ -7,9 +7,28 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.scanners import run_all_scanners
 from backend.scanners.base import make_finding, redact_secret
-from backend.scanners import gitleaks_scanner, checkov_scanner
+from backend.scanners import (
+    gitleaks_scanner,
+    checkov_scanner,
+    trivy_scanner,
+    hadolint_scanner,
+    semgrep_scanner,
+    kubesec_scanner,
+)
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "vulnerable")
+
+
+@pytest.fixture
+def workspace_copy(tmp_path):
+    """
+    Fixtures copied outside tests/ — mirrors the production workspace
+    dir and avoids semgrep's default ignore of tests/ directories.
+    """
+    import shutil
+    dest = tmp_path / "workspace"
+    shutil.copytree(FIXTURES, dest)
+    return str(dest)
 
 
 # =========================================================
@@ -122,6 +141,140 @@ def test_checkov_parse_empty_and_malformed():
 
 
 # =========================================================
+# TRIVY PARSER (no binary required)
+# =========================================================
+
+TRIVY_REPORT = {
+    "Results": [
+        {
+            "Target": "requirements.txt",
+            "Vulnerabilities": [
+                {
+                    "VulnerabilityID": "CVE-2017-18342",
+                    "PkgName": "pyyaml",
+                    "InstalledVersion": "3.12",
+                    "FixedVersion": "4.1",
+                    "Severity": "CRITICAL",
+                    "Title": "yaml.load() API could execute arbitrary code",
+                    "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2017-18342",
+                },
+                {
+                    "VulnerabilityID": "CVE-0000-0001",
+                    "PkgName": "leftpad",
+                    "InstalledVersion": "1.0",
+                    "Severity": "LOW",
+                },
+            ],
+        }
+    ]
+}
+
+
+def test_trivy_parse_report():
+    findings = trivy_scanner.parse_report(TRIVY_REPORT)
+    assert len(findings) == 2
+    assert findings[0]["rule_id"] == "CVE-2017-18342"
+    assert findings[0]["severity"] == "CRITICAL"
+    assert "fix: upgrade to 4.1" in findings[0]["evidence"]
+    assert "no fix released yet" in findings[1]["evidence"]
+
+
+def test_trivy_parse_empty():
+    assert trivy_scanner.parse_report({}) == []
+    assert trivy_scanner.parse_report({"Results": [{"Target": "x"}]}) == []
+
+
+# =========================================================
+# HADOLINT PARSER (no binary required)
+# =========================================================
+
+HADOLINT_REPORT = [
+    {"code": "DL3007", "message": "Using latest is prone to errors",
+     "file": "ws/Dockerfile", "line": 2, "level": "warning"},
+    {"code": "DL3002", "message": "Last USER should not be root",
+     "file": "ws/Dockerfile", "line": 8, "level": "error"},
+    {"code": "SC2046", "message": "Quote this", "file": "ws/Dockerfile",
+     "line": 5, "level": "style"},
+]
+
+
+def test_hadolint_parse_report():
+    findings = hadolint_scanner.parse_report(HADOLINT_REPORT, "ws")
+    assert len(findings) == 3
+    assert findings[0]["severity"] == "MEDIUM"   # warning
+    assert findings[1]["severity"] == "HIGH"     # error
+    assert findings[2]["severity"] == "LOW"      # style
+    assert findings[0]["file"] == "Dockerfile"
+    assert findings[0]["guideline"].endswith("DL3007")
+    assert findings[2]["guideline"] is None      # SC codes have no wiki page
+
+
+# =========================================================
+# SEMGREP PARSER (no binary required)
+# =========================================================
+
+SEMGREP_REPORT = {
+    "results": [
+        {
+            "check_id": "python.lang.security.audit.sql-injection",
+            "path": "ws/app.py",
+            "start": {"line": 12},
+            "extra": {
+                "severity": "ERROR",
+                "message": "SQL injection via string concatenation",
+                "lines": 'rows = conn.execute("SELECT ..." + user_id)',
+                "metadata": {"references": ["https://owasp.org/sql-injection"]},
+            },
+        }
+    ]
+}
+
+
+def test_semgrep_parse_report():
+    findings = semgrep_scanner.parse_report(SEMGREP_REPORT, "ws")
+    assert len(findings) == 1
+    f = findings[0]
+    assert f["rule_id"] == "sql-injection"
+    assert f["severity"] == "HIGH"
+    assert f["file"] == "app.py"
+    assert f["line"] == 12
+    assert f["guideline"] == "https://owasp.org/sql-injection"
+
+
+# =========================================================
+# KUBESEC PARSER (no binary required)
+# =========================================================
+
+KUBESEC_REPORT = [
+    {
+        "object": "Deployment/web-app.default",
+        "valid": True,
+        "score": -30,
+        "scoring": {
+            "critical": [
+                {"id": "Privileged", "selector": "containers[] .securityContext .privileged == true",
+                 "reason": "Privileged containers can allow almost complete host access", "points": -30},
+            ],
+            "advise": [
+                {"id": "ServiceAccountName", "selector": ".spec .serviceAccountName",
+                 "reason": "Service accounts restrict API access"},
+            ],
+        },
+    },
+    {"object": "invalid", "valid": False},
+]
+
+
+def test_kubesec_parse_report():
+    findings = kubesec_scanner.parse_report(KUBESEC_REPORT, "deployment.yaml")
+    assert len(findings) == 2
+    assert findings[0]["severity"] == "HIGH"
+    assert findings[0]["rule_id"] == "Privileged"
+    assert findings[1]["severity"] == "LOW"
+    assert all(f["file"] == "deployment.yaml" for f in findings)
+
+
+# =========================================================
 # INTEGRATION — requires real scanners on PATH
 # =========================================================
 
@@ -140,14 +293,42 @@ def test_checkov_finds_fixture_misconfigs():
     assert "CKV_DOCKER_8" in rule_ids    # root user
 
 
+@pytest.mark.skipif(not trivy_scanner.available(), reason="trivy not installed")
+def test_trivy_finds_fixture_cves(workspace_copy):
+    findings = trivy_scanner.scan(workspace_copy)
+    assert any(f["rule_id"].startswith("CVE-") for f in findings)
+    assert any("pyyaml" in f["title"] for f in findings)
+
+
+@pytest.mark.skipif(not hadolint_scanner.available(), reason="hadolint not installed")
+def test_hadolint_finds_fixture_issues(workspace_copy):
+    findings = hadolint_scanner.scan(workspace_copy)
+    rule_ids = {f["rule_id"] for f in findings}
+    assert "DL3007" in rule_ids  # latest tag
+    assert "DL3002" in rule_ids  # root user
+
+
+@pytest.mark.skipif(not semgrep_scanner.available(), reason="semgrep not installed")
+def test_semgrep_finds_fixture_injections(workspace_copy):
+    findings = semgrep_scanner.scan(workspace_copy)
+    assert any("sql" in f["rule_id"].lower() for f in findings)
+    assert any(f["file"].endswith("app.py") for f in findings)
+
+
+@pytest.mark.skipif(not kubesec_scanner.available(), reason="kubesec not installed")
+def test_kubesec_finds_privileged_container(workspace_copy):
+    findings = kubesec_scanner.scan(workspace_copy)
+    assert any(f["rule_id"] == "Privileged" and f["severity"] == "HIGH" for f in findings)
+
+
 @pytest.mark.skipif(
     not (gitleaks_scanner.available() and checkov_scanner.available()),
     reason="scanners not installed",
 )
-def test_run_all_scanners_merges_and_sorts():
-    result = run_all_scanners(FIXTURES)
-    assert set(result["tools_run"]) == {"gitleaks", "checkov"}
-    assert result["tools_missing"] == []
+def test_run_all_scanners_merges_and_sorts(workspace_copy):
+    result = run_all_scanners(workspace_copy)
+    assert "gitleaks" in result["tools_run"]
+    assert "checkov" in result["tools_run"]
     sevs = [f["severity"] for f in result["findings"]]
     # CRITICAL findings must sort before MEDIUM
     assert sevs.index("CRITICAL") < sevs.index("MEDIUM")

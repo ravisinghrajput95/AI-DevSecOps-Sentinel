@@ -58,12 +58,16 @@ AI DevSecOps Sentinel is a full-stack application that combines:
 ## Scanner-Grounded Analysis
 
 Uploaded files are persisted to a `workspace/` directory and scanned
-once per upload batch by deterministic tools:
+once per upload batch by deterministic tools (run in parallel):
 
 - **gitleaks** — hardcoded secrets (findings are CRITICAL; secret
   values are redacted before storage)
 - **checkov** — IaC misconfigurations (Terraform, Kubernetes,
   Dockerfile, Helm, GitHub Actions, docker-compose)
+- **trivy** — vulnerable dependencies (CVEs in lockfiles/manifests)
+- **hadolint** — Dockerfile best-practice linting
+- **semgrep** — application code SAST (community registry ruleset)
+- **kubesec** — Kubernetes manifest risk scoring
 
 Normalized findings are cached in memory and used two ways:
 

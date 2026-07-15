@@ -72,6 +72,11 @@ AI ever reasons about them:
 * **gitleaks** — hardcoded secret detection (values redacted)
 * **checkov** — IaC misconfiguration checks across Terraform,
   Kubernetes, Dockerfiles, Helm, and CI/CD workflows
+* **trivy** — vulnerable dependency detection (CVEs) in
+  requirements.txt, package-lock.json, pom.xml, go.mod, and more
+* **hadolint** — Dockerfile best-practice linting
+* **semgrep** — SAST for application code (Python, JS/TS, Java, Go)
+* **kubesec** — Kubernetes manifest risk scoring
 
 The AI treats scanner output as verified ground truth: it correlates
 findings across tools and files, deduplicates, prioritizes by

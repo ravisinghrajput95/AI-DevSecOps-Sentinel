@@ -1,14 +1,31 @@
 # =========================================================
 # SCANNER REGISTRY
-# Runs every available scanner over the workspace and
-# returns one merged, severity-sorted findings list.
-# A missing or crashing scanner never breaks ingestion.
+# Runs every available scanner over the workspace (in
+# parallel — they are independent subprocesses) and returns
+# one merged, severity-sorted findings list. A missing or
+# crashing scanner never breaks ingestion.
 # =========================================================
 
-from backend.scanners.base import SEVERITY_ORDER
-from backend.scanners import gitleaks_scanner, checkov_scanner
+from concurrent.futures import ThreadPoolExecutor
 
-SCANNERS = [gitleaks_scanner, checkov_scanner]
+from backend.scanners.base import SEVERITY_ORDER
+from backend.scanners import (
+    gitleaks_scanner,
+    checkov_scanner,
+    trivy_scanner,
+    hadolint_scanner,
+    semgrep_scanner,
+    kubesec_scanner,
+)
+
+SCANNERS = [
+    gitleaks_scanner,   # secrets
+    checkov_scanner,    # IaC misconfigurations
+    trivy_scanner,      # vulnerable dependencies (CVEs)
+    hadolint_scanner,   # Dockerfile best practices
+    semgrep_scanner,    # application code SAST
+    kubesec_scanner,    # Kubernetes manifest risk
+]
 
 
 def scanner_status() -> dict:
@@ -16,20 +33,31 @@ def scanner_status() -> dict:
     return {s.TOOL: s.available() for s in SCANNERS}
 
 
+def _run_one(scanner, workspace_dir):
+    return scanner.TOOL, scanner.scan(workspace_dir)
+
+
 def run_all_scanners(workspace_dir: str) -> dict:
     findings = []
     tools_run = []
     tools_missing = []
 
+    runnable = []
     for scanner in SCANNERS:
-        if not scanner.available():
+        if scanner.available():
+            runnable.append(scanner)
+        else:
             tools_missing.append(scanner.TOOL)
-            continue
-        try:
-            findings.extend(scanner.scan(workspace_dir))
-            tools_run.append(scanner.TOOL)
-        except Exception as e:
-            print(f"Scanner error ({scanner.TOOL}): {e}")
+
+    with ThreadPoolExecutor(max_workers=len(runnable) or 1) as pool:
+        futures = [pool.submit(_run_one, s, workspace_dir) for s in runnable]
+        for future in futures:
+            try:
+                tool, tool_findings = future.result()
+                findings.extend(tool_findings)
+                tools_run.append(tool)
+            except Exception as e:
+                print(f"Scanner error: {e}")
 
     findings.sort(key=lambda f: (SEVERITY_ORDER.get(f["severity"], 9), f["file"], f["line"]))
 
