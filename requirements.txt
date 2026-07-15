@@ -9,3 +9,4 @@ numpy
 
 # dev / test
 pytest
+httpx

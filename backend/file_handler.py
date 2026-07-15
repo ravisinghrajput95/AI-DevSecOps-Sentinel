@@ -3,7 +3,7 @@ import zipfile
 import shutil
 import base64
 import tempfile
-from backend.rag import add_document
+from backend.rag import add_document, remove_documents
 from backend.memory import memory
 from backend.project_memory import project_memory
 from backend.redaction import harvest_secrets
@@ -286,3 +286,49 @@ def save_uploaded_files(files: list, project_name: str = "default"):
     # =====================================================
     if ingested_any:
         memory["scan"] = run_all_scanners(WORKSPACE_DIR)
+
+
+# =========================================================
+# FILE REMOVAL
+# Keeps every store in sync: in-memory file list, workspace
+# dir, RAG index — then re-runs the FULL scanner registry
+# over what remains so findings from all tools update.
+# =========================================================
+
+def remove_uploaded(name: str) -> int:
+    """
+    Remove a sidebar entry — a single file, or a whole project
+    when the entry is a .zip upload. Returns removed file count.
+    """
+    before = len(memory["files"])
+
+    if name.lower().endswith(".zip"):
+        project = os.path.basename(name)[:-4]
+        memory["files"] = [
+            f for f in memory["files"] if f.get("project") != project
+        ]
+        project_path = os.path.join(WORKSPACE_DIR, project)
+        if os.path.isdir(project_path):
+            shutil.rmtree(project_path)
+        remove_documents(project_id=project)
+    else:
+        memory["files"] = [
+            f for f in memory["files"] if f.get("name") != name
+        ]
+        file_path = os.path.join(WORKSPACE_DIR, os.path.basename(name))
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+        remove_documents(source=name)
+
+    removed = before - len(memory["files"])
+
+    # Invalidate the RAG query cache and rescan what remains
+    memory["rag_cache_key"] = None
+    memory["rag_results"] = []
+    memory["scan"] = (
+        run_all_scanners(WORKSPACE_DIR) if memory["files"] else None
+    )
+
+    print(f"Removed {removed} file(s) for '{name}' — "
+          f"{len(memory['files'])} remaining")
+    return removed

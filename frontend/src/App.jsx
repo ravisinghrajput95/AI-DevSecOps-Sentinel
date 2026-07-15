@@ -298,6 +298,16 @@ function isFileAlreadySent(file) {
   return _sentFileHashes.has(fileHash(file));
 }
 
+function unmarkFileAsSent(file) {
+  _sentFileHashes.delete(fileHash(file));
+  try {
+    sessionStorage.setItem(
+      "devops_sentinel_hashes",
+      JSON.stringify([..._sentFileHashes])
+    );
+  } catch (e) {}
+}
+
 // =========================================================
 // FILE ENCODER
 // Encodes only files that have not yet been sent to backend
@@ -1774,7 +1784,17 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
           onPromptClick={handleSend}
           uploadedFiles={uploadedFiles}
           onFilesAdded={handleFilesAdded}
-          onFileRemove={name => setUploadedFiles(prev => prev.filter(f => f.name !== name))}
+          onFileRemove={name => {
+            const file = uploadedFiles.find(f => f.name === name);
+            if (file) unmarkFileAsSent(file);
+            setUploadedFiles(prev => prev.filter(f => f.name !== name));
+            // Sync the backend: drop from memory/workspace/RAG + rescan
+            fetch("/remove-file", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name }),
+            }).catch(() => {});
+          }}
         />
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>

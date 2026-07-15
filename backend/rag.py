@@ -74,7 +74,10 @@ def add_document(
                 "content": chunk,
                 "source": source,
                 "project_id": actual_project,
-                "topic": topic
+                "topic": topic,
+                # kept so removals can rebuild the index without
+                # paying for re-embedding; never leaves the process
+                "vector": embedding,
             })
         except Exception as e:
             print("Embedding error:", e)
@@ -232,6 +235,35 @@ def build_context(results):
         )
 
     return "\n\n---\n\n".join(context)
+
+# =========================================================
+# REMOVE DOCUMENTS
+# =========================================================
+
+def remove_documents(source=None, project_id=None):
+    """
+    Drop all chunks belonging to a source file or a project and
+    rebuild the index from the stored vectors (no re-embedding).
+    """
+    global documents, index
+
+    def keep(doc):
+        if project_id is not None and doc.get("project_id") == project_id:
+            return False
+        if source is not None and doc.get("source") == source:
+            return False
+        return True
+
+    before = len(documents)
+    documents = [d for d in documents if keep(d)]
+
+    index = faiss.IndexFlatL2(EMBEDDING_DIMENSION)
+    vectors = [d["vector"] for d in documents if d.get("vector")]
+    if vectors:
+        index.add(np.array(vectors).astype("float32"))
+
+    print(f"RAG: removed {before - len(documents)} chunks "
+          f"(source={source}, project={project_id})")
 
 # =========================================================
 # CLEAR ALL
