@@ -91,6 +91,54 @@ jobs:
         run: npm run build
 
   # =========================================================
+  # DOCKER — the deployment skeleton must always build and
+  # boot: compose build, stack up (healthchecks gate --wait),
+  # then a smoke test through the nginx proxy. A dummy
+  # OPENAI_API_KEY is enough because the smoke chat message
+  # is answered by a canned intent, never the LLM.
+  # =========================================================
+  docker-build:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: sk-ci-dummy-key
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Build images
+        run: docker compose build
+
+      - name: Boot stack
+        run: docker compose up -d --wait
+
+      - name: Smoke test through nginx
+        run: |
+          # SPA serves
+          curl -fsS -o /dev/null http://localhost/
+
+          # Health reports every scanner available in the image
+          curl -fsS http://localhost/health | tee health.json
+          python3 -c "
+          import json
+          h = json.load(open('health.json'))
+          assert h['status'] == 'ok'
+          missing = [t for t, ok in h['scanners'].items() if not ok]
+          assert not missing, f'scanners missing in image: {missing}'
+          "
+
+          # Canned chat responds through the proxy
+          curl -fsS -X POST http://localhost/chat \
+            -H "Content-Type: application/json" \
+            -d '{"message":"hello"}' | grep -q "Sentinel"
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  # =========================================================
   # SELF-SCAN — a DevSecOps tool should pass its own medicine:
   # gitleaks over the full git history (fixtures allowlisted
   # in .gitleaks.toml)
