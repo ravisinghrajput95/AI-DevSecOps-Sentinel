@@ -41,16 +41,23 @@ def _fresh_memory() -> dict:
 
 class Session:
     def __init__(self, session_id: str):
-        # Lazy import: rag imports session for current(), so session
-        # must not import rag at module load
-        from backend.rag import RagStore
-
         self.id = session_id
         self.memory = _fresh_memory()
-        self.rag = RagStore()
+        self._rag = None
         self.secrets = set()
         self.workspace = os.path.join(WORKSPACE_ROOT, session_id)
         self.last_used = time.time()
+
+    @property
+    def rag(self):
+        # Created on first use, imported lazily: scanner-only usage
+        # (the eval benchmark, minimal CI environments) must work
+        # without the RAG stack (faiss/numpy/openai) installed —
+        # and rag.py itself imports session for current().
+        if self._rag is None:
+            from backend.rag import RagStore
+            self._rag = RagStore()
+        return self._rag
 
 
 SESSIONS: dict = {}
