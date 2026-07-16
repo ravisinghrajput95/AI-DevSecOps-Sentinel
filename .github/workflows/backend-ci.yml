@@ -1,21 +1,42 @@
-name: CI
+# =========================================================
+# BACKEND CI — tests first, then (push to main only) the
+# docker image build + smoke test as a dependent job. Path-
+# filtered: frontend-only or docs-only changes never run it.
+#
+# GKE deploy (later): add Artifact Registry auth + push
+# after the smoke test, then a rollout step.
+# =========================================================
+
+name: Backend CI
 
 on:
   push:
     branches: [main]
+    paths:
+      - "backend/**"
+      - "tests/**"
+      - "evals/**"
+      - "requirements.txt"
+      - ".github/workflows/backend-ci.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "backend/**"
+      - "tests/**"
+      - "evals/**"
+      - "requirements.txt"
+      - ".github/workflows/backend-ci.yml"
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: backend-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   # =========================================================
-  # BACKEND — full test suite with all six scanners installed
-  # so the integration tests run instead of being skipped
+  # TESTS — full suite with all six scanners installed so the
+  # integration tests run instead of being skipped
   # =========================================================
-  backend-tests:
+  tests:
     runs-on: ubuntu-latest
     env:
       OPENAI_API_KEY: sk-ci-dummy-key
@@ -65,49 +86,43 @@ jobs:
         run: python -m pytest tests/ -v
 
   # =========================================================
-  # FRONTEND — lint (zero tolerance) + production build
+  # DOCKER IMAGE — only after tests pass, only on main pushes
   # =========================================================
-  frontend:
+  docker:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
+    needs: tests
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npx eslint .
-
-      - name: Build
-        run: npm run build
-
-  # =========================================================
-  # SELF-SCAN — a DevSecOps tool should pass its own medicine:
-  # gitleaks over the full git history (fixtures allowlisted
-  # in .gitleaks.toml)
-  # =========================================================
-  secret-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          fetch-depth: 0
-
-      - name: Install gitleaks
+      - name: Build image
         run: |
-          mkdir -p "$HOME/.local/bin"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
-            | tar -xz -C "$HOME/.local/bin" gitleaks
+          docker build \
+            -f backend/Dockerfile \
+            -t sentinel-backend:${{ github.sha }} \
+            .
 
-      - name: Scan repository history for secrets
-        run: gitleaks detect --redact --verbose
+      - name: Smoke test — boot and verify scanner registry
+        run: |
+          docker run -d --name backend -p 8000:8000 \
+            -e OPENAI_API_KEY=sk-ci-dummy-key \
+            sentinel-backend:${{ github.sha }}
+
+          # Poll quietly while uvicorn boots — failed attempts here
+          # are expected retry noise, not errors worth logging
+          for i in $(seq 1 12); do
+            curl -fsS http://localhost:8000/health > health.json 2>/dev/null && break
+            sleep 5
+          done
+
+          python3 -c "
+          import json
+          h = json.load(open('health.json'))
+          assert h['status'] == 'ok'
+          missing = [t for t, ok in h['scanners'].items() if not ok]
+          assert not missing, f'scanners missing in image: {missing}'
+          "
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker logs backend 2>&1 | tail -50
