@@ -1,7 +1,11 @@
 # backend/main.py
 
-from fastapi import Depends, FastAPI, Request
+import os
+import secrets as pysecrets
+
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from backend.session import SESSIONS, activate
@@ -25,6 +29,25 @@ from backend.redaction import clear_secrets, scrub_secrets
 from backend.scanners import scanner_status
 
 # =========================================================
+# AUTH (optional)
+# Set SENTINEL_API_KEY in the environment to require an
+# X-API-Key header on every endpoint except /health.
+# Unset (the default) keeps local development open.
+# =========================================================
+
+async def require_api_key(request: Request):
+    expected = os.environ.get("SENTINEL_API_KEY", "")
+    if not expected or request.url.path == "/health":
+        return
+    provided = request.headers.get("X-API-Key", "")
+    if not pysecrets.compare_digest(provided, expected):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing X-API-Key header.",
+        )
+
+
+# =========================================================
 # SESSION SCOPE
 # Every request is bound to the session named by its
 # X-Session-Id header (client-generated UUID, one per
@@ -36,7 +59,33 @@ async def session_scope(request: Request):
     activate(request.headers.get("X-Session-Id"))
 
 
-app = FastAPI(dependencies=[Depends(session_scope)])
+app = FastAPI(dependencies=[Depends(require_api_key), Depends(session_scope)])
+
+# =========================================================
+# REQUEST BODY SIZE LIMIT
+# Uploads arrive base64-encoded in the /chat JSON body, so
+# the cap is set above the per-file ingest limits (base64
+# adds ~33%). Oversized requests are rejected before the
+# body is read.
+# =========================================================
+
+MAX_REQUEST_BYTES = int(os.environ.get("SENTINEL_MAX_REQUEST_MB", "80")) * 1024 * 1024
+
+
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    length = request.headers.get("content-length", "")
+    if length.isdigit() and int(length) > MAX_REQUEST_BYTES:
+        return JSONResponse(
+            status_code=413,
+            content={
+                "detail": (
+                    f"Request body exceeds the "
+                    f"{MAX_REQUEST_BYTES // (1024 * 1024)} MB limit."
+                )
+            },
+        )
+    return await call_next(request)
 
 # =========================================================
 # CORS

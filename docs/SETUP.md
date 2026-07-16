@@ -69,6 +69,18 @@ Create a `.env` file in the root directory:
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
+Optional hardening variables (both default to open/permissive for
+local development):
+
+```env
+# Require X-API-Key on every endpoint except /health.
+# The frontend picks the key up from VITE_SENTINEL_API_KEY.
+SENTINEL_API_KEY=change-me
+
+# Request body cap in MB (default 80)
+SENTINEL_MAX_REQUEST_MB=80
+```
+
 ### 3. Frontend Setup
 
 ```bash

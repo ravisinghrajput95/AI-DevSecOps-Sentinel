@@ -29,6 +29,17 @@ def clear_workspace():
         shutil.rmtree(path)
     os.makedirs(path)
 
+# =========================================================
+# INGESTION LIMITS
+# Per-file and zip-expansion caps. The request-level body cap
+# lives in main.py; these guard what a request may expand into
+# (zip bombs) and what a single file may weigh once decoded.
+# =========================================================
+MAX_FILE_BYTES = 5 * 1024 * 1024               # single non-zip upload
+MAX_ZIP_BYTES = 50 * 1024 * 1024               # uploaded zip archive
+MAX_ZIP_MEMBERS = 2000                          # entries per archive
+MAX_ZIP_UNCOMPRESSED_BYTES = 200 * 1024 * 1024  # total expanded size
+
 SUPPORTED_EXTENSIONS = [
     ".py", ".java", ".js", ".ts",
     ".yaml", ".yml", ".tf", ".tfvars",
@@ -70,12 +81,28 @@ def detect_project_type(files):
 
 
 def safe_extract(zip_ref, extract_path):
+    infos = zip_ref.infolist()
+
+    # Zip-bomb guards — checked against the archive's declared
+    # sizes BEFORE anything touches the disk.
+    if len(infos) > MAX_ZIP_MEMBERS:
+        raise ValueError(
+            f"archive contains {len(infos)} entries — "
+            f"the limit is {MAX_ZIP_MEMBERS}"
+        )
+    total_uncompressed = sum(i.file_size for i in infos)
+    if total_uncompressed > MAX_ZIP_UNCOMPRESSED_BYTES:
+        raise ValueError(
+            f"archive expands to {total_uncompressed // (1024 * 1024)} MB — "
+            f"the limit is {MAX_ZIP_UNCOMPRESSED_BYTES // (1024 * 1024)} MB"
+        )
+
     for member in zip_ref.namelist():
         member_path = os.path.join(extract_path, member)
         abs_extract = os.path.abspath(extract_path)
         abs_target = os.path.abspath(member_path)
         if not abs_target.startswith(abs_extract):
-            raise Exception("Blocked Zip Slip attack")
+            raise ValueError("blocked Zip Slip attack")
     zip_ref.extractall(extract_path)
 
 
@@ -263,6 +290,16 @@ def save_uploaded_files(files: list, project_name: str = "default"):
             raw_bytes = base64.b64decode(b64_content)
         except Exception as e:
             print(f"Base64 decode error for {filename}: {e}")
+            continue
+
+        # Per-file size cap — zips get a higher allowance than
+        # plain files since they carry whole projects.
+        limit = MAX_ZIP_BYTES if filename.lower().endswith(".zip") else MAX_FILE_BYTES
+        if len(raw_bytes) > limit:
+            print(
+                f"Skipping {filename}: {len(raw_bytes) // (1024 * 1024)} MB "
+                f"exceeds the {limit // (1024 * 1024)} MB limit"
+            )
             continue
 
         suffix = os.path.splitext(filename)[1] or ".tmp"

@@ -18,9 +18,14 @@ const SESSION_ID = (() => {
   return id;
 })();
 
+// Optional API key — set VITE_SENTINEL_API_KEY when the backend
+// runs with SENTINEL_API_KEY; omitted entirely in open local dev.
+const API_KEY = import.meta.env.VITE_SENTINEL_API_KEY;
+
 const API_HEADERS = {
   "Content-Type": "application/json",
   "X-Session-Id": SESSION_ID,
+  ...(API_KEY ? { "X-API-Key": API_KEY } : {}),
 };
 
 // =========================================================

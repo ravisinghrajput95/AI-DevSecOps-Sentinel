@@ -119,6 +119,18 @@ Three layers defend against this:
    data, never instructions, and that manipulation attempts must be
    reported as `[PROMPT-INJECTION]` findings.
 
+## Request Limits & Auth
+
+- Request bodies are capped (default 80 MB, `SENTINEL_MAX_REQUEST_MB`)
+  by middleware before the body is read.
+- Per-file ingest caps: 5 MB per plain file, 50 MB per zip; archives
+  are rejected before extraction if they declare more than 2000
+  entries or 200 MB uncompressed (zip-bomb guard), on top of the
+  existing zip-slip path check.
+- Setting `SENTINEL_API_KEY` requires an `X-API-Key` header on every
+  endpoint except `/health` (compared in constant time). Unset, the
+  API stays open for local development.
+
 ## Component Architecture
 
 ### Frontend Layer
