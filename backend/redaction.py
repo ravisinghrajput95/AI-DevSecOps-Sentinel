@@ -10,11 +10,18 @@
 
 import re
 
-# Raw secret values seen by scanners this session. In-memory only —
-# same lifetime as the workspace; cleared on "clear context".
-_known_secrets = set()
+from backend.session import current
 
 _MIN_SECRET_LENGTH = 6
+
+
+def _known_secrets() -> set:
+    """
+    Raw secret values seen by scanners — scoped to the ACTIVE session
+    (in-memory only, same lifetime as its workspace, cleared on
+    "clear context"). Never shared across sessions.
+    """
+    return current().secrets
 
 _PATTERNS = [
     re.compile(r"AKIA[0-9A-Z]{16}"),                 # AWS access key id
@@ -45,11 +52,11 @@ def _mask(value: str) -> str:
 def remember_secret(value: str):
     """Register a raw secret value found by a scanner."""
     if value and len(value) >= _MIN_SECRET_LENGTH:
-        _known_secrets.add(value)
+        _known_secrets().add(value)
 
 
 def clear_secrets():
-    _known_secrets.clear()
+    _known_secrets().clear()
 
 
 def harvest_secrets(content: str):
@@ -68,7 +75,7 @@ def scrub_secrets(text: str) -> str:
         return text
 
     # Longest first so partial overlaps can't leave fragments behind
-    for secret in sorted(_known_secrets, key=len, reverse=True):
+    for secret in sorted(_known_secrets(), key=len, reverse=True):
         if secret in text:
             text = text.replace(secret, _mask(secret))
 

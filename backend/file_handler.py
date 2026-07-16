@@ -8,20 +8,26 @@ from backend.memory import memory
 from backend.project_memory import project_memory
 from backend.redaction import harvest_secrets
 from backend.scanners import run_all_scanners
+from backend.session import current
 
-# Ingested files are persisted here so deterministic scanners
-# (gitleaks, checkov) can run over them. Wiped at startup so its
-# lifetime matches the in-memory file store.
-WORKSPACE_DIR = "workspace"
+
+def workspace_dir() -> str:
+    """
+    The ACTIVE session's workspace — ingested files persist here so
+    deterministic scanners can run over them. Created on demand;
+    session.py wipes the whole workspace root at startup.
+    """
+    path = current().workspace
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def clear_workspace():
-    if os.path.exists(WORKSPACE_DIR):
-        shutil.rmtree(WORKSPACE_DIR)
-    os.makedirs(WORKSPACE_DIR)
-
-
-clear_workspace()
+    """Wipe only the active session's workspace."""
+    path = current().workspace
+    if os.path.exists(path):
+        shutil.rmtree(path)
+    os.makedirs(path)
 
 SUPPORTED_EXTENSIONS = [
     ".py", ".java", ".js", ".ts",
@@ -86,7 +92,7 @@ def read_file_content(filepath):
 
 def ingest_zip(zip_path):
     project_name = os.path.basename(zip_path).replace(".zip", "")
-    extract_path = os.path.join(WORKSPACE_DIR, project_name)
+    extract_path = os.path.join(workspace_dir(), project_name)
 
     if os.path.exists(extract_path):
         shutil.rmtree(extract_path)
@@ -199,7 +205,7 @@ def ingest_single_file(filepath, original_filename, project_name="default"):
     # Keep the ORIGINAL filename — scanners like checkov and
     # gitleaks key their rules off names like "Dockerfile"/".tf".
     workspace_path = os.path.join(
-        WORKSPACE_DIR, os.path.basename(original_filename)
+        workspace_dir(), os.path.basename(original_filename)
     )
     shutil.copyfile(filepath, workspace_path)
 
@@ -294,7 +300,7 @@ def save_uploaded_files(files: list, project_name: str = "default"):
     # later question reuses these verified findings.
     # =====================================================
     if ingested_any:
-        memory["scan"] = run_all_scanners(WORKSPACE_DIR)
+        memory["scan"] = run_all_scanners(workspace_dir())
 
 
 # =========================================================
@@ -316,7 +322,7 @@ def remove_uploaded(name: str) -> int:
         memory["files"] = [
             f for f in memory["files"] if f.get("project") != project
         ]
-        project_path = os.path.join(WORKSPACE_DIR, project)
+        project_path = os.path.join(workspace_dir(), project)
         if os.path.isdir(project_path):
             shutil.rmtree(project_path)
         remove_documents(project_id=project)
@@ -324,7 +330,7 @@ def remove_uploaded(name: str) -> int:
         memory["files"] = [
             f for f in memory["files"] if f.get("name") != name
         ]
-        file_path = os.path.join(WORKSPACE_DIR, os.path.basename(name))
+        file_path = os.path.join(workspace_dir(), os.path.basename(name))
         if os.path.isfile(file_path):
             os.remove(file_path)
         remove_documents(source=name)
@@ -335,7 +341,7 @@ def remove_uploaded(name: str) -> int:
     memory["rag_cache_key"] = None
     memory["rag_results"] = []
     memory["scan"] = (
-        run_all_scanners(WORKSPACE_DIR) if memory["files"] else None
+        run_all_scanners(workspace_dir()) if memory["files"] else None
     )
 
     print(f"Removed {removed} file(s) for '{name}' — "

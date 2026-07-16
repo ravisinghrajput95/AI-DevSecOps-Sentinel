@@ -1,8 +1,10 @@
 # backend/main.py
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from backend.session import SESSIONS, activate
 
 from backend.prompt_engine import build_prompt
 from backend.file_handler import (
@@ -22,7 +24,19 @@ from backend.rag import clear_rag
 from backend.redaction import clear_secrets, scrub_secrets
 from backend.scanners import scanner_status
 
-app = FastAPI()
+# =========================================================
+# SESSION SCOPE
+# Every request is bound to the session named by its
+# X-Session-Id header (client-generated UUID, one per
+# browser tab). No header -> the "default" session, which
+# keeps tests, scripts, and curl usage working.
+# =========================================================
+
+async def session_scope(request: Request):
+    activate(request.headers.get("X-Session-Id"))
+
+
+app = FastAPI(dependencies=[Depends(session_scope)])
 
 # =========================================================
 # CORS
@@ -63,6 +77,7 @@ async def health():
     return {
         "status": "ok",
         "files_in_memory": len(memory["files"]),
+        "active_sessions": len(SESSIONS),
         "scanners": scanner_status(),
     }
 

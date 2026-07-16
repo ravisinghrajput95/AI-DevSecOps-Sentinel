@@ -68,25 +68,23 @@ class _FakeResponse:
 
 @pytest.fixture
 def clean_state(monkeypatch, tmp_path):
-    """Isolated workspace + memory, scanners and embeddings stubbed."""
+    """Fresh default session with tmp workspace, scanners stubbed."""
     import backend.file_handler as fh
     import backend.github_ingest as gi
-    from backend.memory import memory
+    from backend.session import activate, destroy
 
-    workspace = str(tmp_path / "workspace")
-    os.makedirs(workspace)
-    monkeypatch.setattr(fh, "WORKSPACE_DIR", workspace)
-    monkeypatch.setattr(gi, "WORKSPACE_DIR", workspace)
+    destroy("default")
+    session = activate("default")
+    session.workspace = str(tmp_path / "workspace")
+    os.makedirs(session.workspace)
     monkeypatch.setattr(
         gi, "run_all_scanners",
         lambda _: {"findings": [], "tools_run": ["stub"], "tools_missing": []},
     )
     monkeypatch.setattr(fh, "add_document", lambda **kw: None)
-    memory["files"] = []
-    memory["scan"] = None
-    yield workspace
-    memory["files"] = []
-    memory["scan"] = None
+    yield session.workspace
+    destroy("default")
+    activate("default")
 
 
 def test_ingest_github_repo_flattens_wrapper(clean_state, monkeypatch):

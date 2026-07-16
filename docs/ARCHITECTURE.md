@@ -55,6 +55,18 @@ AI DevSecOps Sentinel is a full-stack application that combines:
 └─────────────────────────────────────────────────────────┘
 ```
 
+## Session Isolation
+
+Every browser tab is an isolated session, identified by a
+client-generated UUID sent as the `X-Session-Id` header. Each session
+owns its own file store, scan cache, FAISS index, secret-redaction
+registry, and `workspace/<session-id>/` directory — users can never
+see each other's files, findings, or secrets, and "clear context"
+only clears the caller's session. Sessions are in-process, created
+lazily, and evicted (state + workspace) after 2 hours idle.
+Requests without the header fall back to a shared `default` session,
+which keeps tests, scripts, and the eval benchmark working headless.
+
 ## Scanner-Grounded Analysis
 
 Files arrive as direct uploads, `.zip` archives, or a public GitHub

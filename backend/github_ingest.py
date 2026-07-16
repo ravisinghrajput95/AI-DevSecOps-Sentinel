@@ -13,7 +13,7 @@ import tempfile
 
 import requests
 
-from backend.file_handler import WORKSPACE_DIR, ingest_zip
+from backend.file_handler import ingest_zip, workspace_dir
 from backend.memory import memory
 from backend.scanners import run_all_scanners
 
@@ -111,7 +111,7 @@ def ingest_github_repo(owner: str, repo: str, branch=None) -> dict:
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
-    memory["scan"] = run_all_scanners(WORKSPACE_DIR)
+    memory["scan"] = run_all_scanners(workspace_dir())
 
     return {
         "name": f"{owner}/{repo}" + (f"@{branch}" if branch else ""),

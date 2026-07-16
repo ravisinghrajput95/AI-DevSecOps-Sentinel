@@ -5,6 +5,25 @@ import { useState, useRef, useEffect } from "react";
 const FASTAPI_URL = "/chat";
 
 // =========================================================
+// SESSION ID — one per browser tab (sessionStorage), sent as
+// X-Session-Id so the backend isolates this tab's context
+// =========================================================
+
+const SESSION_ID = (() => {
+  let id = sessionStorage.getItem("devops_sentinel_sid");
+  if (!id) {
+    id = crypto.randomUUID();
+    sessionStorage.setItem("devops_sentinel_sid", id);
+  }
+  return id;
+})();
+
+const API_HEADERS = {
+  "Content-Type": "application/json",
+  "X-Session-Id": SESSION_ID,
+};
+
+// =========================================================
 // FAVICON + TAB TITLE
 // =========================================================
 
@@ -1684,7 +1703,7 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
   // re-sent — drop them so the UI doesn't claim context the
   // backend no longer has.
   useEffect(() => {
-    fetch("/health")
+    fetch("/health", { headers: { "X-Session-Id": SESSION_ID } })
       .then(r => r.json())
       .then(h => {
         if (h.files_in_memory === 0) {
@@ -1739,7 +1758,7 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
       const encodedFiles = await encodeFiles(filesToSend);
       const res = await fetch(FASTAPI_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: API_HEADERS,
         body: JSON.stringify({ message: text, history, files: encodedFiles })
       });
       if (!res.ok) throw new Error(`Backend error ${res.status}`);
@@ -1835,7 +1854,7 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
             // Sync the backend: drop from memory/workspace/RAG + rescan
             fetch("/remove-file", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: API_HEADERS,
               body: JSON.stringify({ name }),
             }).catch(() => {});
           }}

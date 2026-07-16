@@ -205,6 +205,7 @@ The assistant correlates explanations with uploaded repository context whenever 
 | Attack Surface Analysis | Multi-step risk reasoning                |
 | Compliance Mapping      | CWE / OWASP / NIST mapping               |
 | Cross-file Correlation  | Connects findings across files           |
+| Session Isolation       | Per-tab sessions — multi-user safe       |
 | Knowledge Assistant     | DevOps and DevSecOps explanations        |
 | AI Remediation          | Secure fix recommendations               |
 | Severity Dashboard      | Critical / High / Medium / Low summaries |
