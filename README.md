@@ -1,5 +1,7 @@
 # AI DevSecOps Sentinel
 
+[![CI](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/ci.yml)
+
 AI DevSecOps Sentinel is an AI-powered DevOps and DevSecOps engineering assistant that performs contextual repository analysis, security reviews, infrastructure validation, and secure engineering guidance using AI-driven reasoning.
 
 The platform combines:

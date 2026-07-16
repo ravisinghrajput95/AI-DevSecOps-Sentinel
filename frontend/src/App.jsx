@@ -291,7 +291,9 @@ function markFileAsSent(file) {
       "devops_sentinel_hashes",
       JSON.stringify([..._sentFileHashes])
     );
-  } catch (e) {}
+  } catch {
+    // sessionStorage quota exceeded — silently ignore
+  }
 }
 
 function isFileAlreadySent(file) {
@@ -305,7 +307,9 @@ function unmarkFileAsSent(file) {
       "devops_sentinel_hashes",
       JSON.stringify([..._sentFileHashes])
     );
-  } catch (e) {}
+  } catch {
+    // sessionStorage quota exceeded — silently ignore
+  }
 }
 
 // =========================================================
@@ -351,7 +355,7 @@ function useSessionPersistence(messages, uploadedFiles, history, repoCtx) {
         savedAt: Date.now(),
       };
       sessionStorage.setItem("devops_sentinel_session", JSON.stringify(toSave));
-    } catch (e) {
+    } catch {
       // sessionStorage quota exceeded — silently ignore
     }
   }, [messages, uploadedFiles, history, repoCtx]);
@@ -468,7 +472,7 @@ function loadSessionData() {
       return null;
     }
     return data;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -1632,9 +1636,8 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
 
   const [history, setHistory]             = useState(_savedSession?.history || []);
   const [repoCtx, setRepoCtx]             = useState(_savedSession?.repoCtx || null);
-  const [showQuickActions, setShowQuickActions] = useState(
-    (_savedSession?.fileNames?.length || 0) > 0
-  );
+  // Derived, not state — always mirrors the uploaded file list
+  const showQuickActions = uploadedFiles.length > 0;
 
   const messagesEndRef = useRef(null);
   const textareaRef    = useRef(null);
@@ -1669,7 +1672,6 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
       textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 160) + "px";
     }
   }, [input]);
-  useEffect(() => { setShowQuickActions(uploadedFiles.length > 0); }, [uploadedFiles]);
 
   // =========================================================
   // FILE MANAGEMENT
@@ -1756,7 +1758,6 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
     setHistory([]);
     setUploadedFiles([]);
     setRepoCtx(null);
-    setShowQuickActions(false);
     sessionStorage.removeItem("devops_sentinel_session");
     sessionStorage.removeItem("devops_sentinel_hashes");
     _sentFileHashes.clear();

@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # =========================================================
+  # BACKEND — full test suite with all six scanners installed
+  # so the integration tests run instead of being skipped
+  # =========================================================
+  backend-tests:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: sk-ci-dummy-key
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install security scanners
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+          pip install checkov semgrep
+
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
+            | tar -xz -C "$HOME/.local/bin" gitleaks
+
+          curl -sSfL -o "$HOME/.local/bin/hadolint" \
+            https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          chmod +x "$HOME/.local/bin/hadolint"
+
+          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b "$HOME/.local/bin"
+
+          curl -sSfL https://github.com/controlplaneio/kubesec/releases/download/v2.14.2/kubesec_linux_amd64.tar.gz \
+            | tar -xz -C "$HOME/.local/bin" kubesec
+
+      - name: Verify all scanners are available
+        run: |
+          python -c "
+          import sys; sys.path.insert(0, '.')
+          from backend.scanners import scanner_status
+          status = scanner_status()
+          print(status)
+          missing = [t for t, ok in status.items() if not ok]
+          assert not missing, f'scanners missing in CI: {missing}'
+          "
+
+      - name: Run test suite
+        run: python -m pytest tests/ -v
+
+  # =========================================================
+  # FRONTEND — lint (zero tolerance) + production build
+  # =========================================================
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Build
+        run: npm run build
+
+  # =========================================================
+  # SELF-SCAN — a DevSecOps tool should pass its own medicine:
+  # gitleaks over the full git history (fixtures allowlisted
+  # in .gitleaks.toml)
+  # =========================================================
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
+            | tar -xz -C "$HOME/.local/bin" gitleaks
+
+      - name: Scan repository history for secrets
+        run: gitleaks detect --redact --verbose

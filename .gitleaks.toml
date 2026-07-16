@@ -1,0 +1,12 @@
+# Gitleaks config for scanning THIS repository (CI self-scan).
+# The runtime scanner pipeline does not use this file — it scans
+# uploaded workspaces with gitleaks defaults.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test tree only contains deliberately fake credentials — vulnerable fixtures and canned scanner-report values in parser tests"
+paths = [
+  '''tests/.*''',
+]
