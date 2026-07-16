@@ -52,14 +52,18 @@ def run_all_scanners(workspace_dir: str) -> dict:
             tools_missing.append(scanner.TOOL)
 
     with ThreadPoolExecutor(max_workers=len(runnable) or 1) as pool:
-        futures = [pool.submit(_run_one, s, workspace_dir) for s in runnable]
-        for future in futures:
+        futures = {pool.submit(_run_one, s, workspace_dir): s for s in runnable}
+        for future, scanner in futures.items():
             try:
                 tool, tool_findings = future.result()
                 findings.extend(tool_findings)
                 tools_run.append(tool)
             except Exception as e:
                 print(f"Scanner error: {e}")
+                # A crashed scanner is a coverage gap — report it as
+                # missing so the UI and the LLM's ground-truth section
+                # surface it instead of silently dropping the tool.
+                tools_missing.append(scanner.TOOL)
 
     findings.sort(key=lambda f: (SEVERITY_ORDER.get(f["severity"], 9), f["file"], f["line"]))
 

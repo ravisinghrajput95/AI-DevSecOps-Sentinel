@@ -1,5 +1,9 @@
+import os
+
 from backend.openai_client import get_client
 from backend.prompt_engine import SYSTEM_PROMPT
+
+LLM_MODEL = os.environ.get("SENTINEL_LLM_MODEL", "gpt-4o")
 
 
 def ask_openai(prompt: str, history: list = []) -> str:
@@ -45,7 +49,7 @@ def ask_openai(prompt: str, history: list = []) -> str:
 
     try:
         response = get_client().chat.completions.create(
-            model="gpt-4o",
+            model=LLM_MODEL,
             messages=messages,
             temperature=0.2,
             max_tokens=4096

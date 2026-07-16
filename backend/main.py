@@ -2,6 +2,7 @@
 
 import os
 import secrets as pysecrets
+import time
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -89,20 +90,76 @@ async def limit_request_size(request: Request, call_next):
 
 # =========================================================
 # CORS
+# Defaults cover local dev servers. In production behind the
+# nginx proxy the app is same-origin and this barely matters,
+# but SENTINEL_CORS_ORIGINS (comma-separated) overrides it
+# for split-origin deployments.
 # =========================================================
+
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:3000,http://127.0.0.1:3000,"
+    "http://localhost:5173,http://127.0.0.1:5173"
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
+        origin.strip()
+        # `or` (not a .get default) so an empty env var — e.g. an
+        # unset compose variable — still falls back to the defaults
+        for origin in (
+            os.environ.get("SENTINEL_CORS_ORIGINS") or DEFAULT_CORS_ORIGINS
+        ).split(",")
+        if origin.strip()
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# =========================================================
+# RATE LIMIT — /chat only
+# Every non-canned message is a paid LLM call and a scanner
+# run, so /chat gets a fixed-window per-client limit. Keyed
+# by client IP (first X-Forwarded-For hop when behind the
+# nginx proxy). In-process state matches the app's single-
+# worker architecture. 0 disables the limit.
+# =========================================================
+
+RATE_LIMIT_PER_MINUTE = int(os.environ.get("SENTINEL_RATE_LIMIT_PER_MIN", "20"))
+
+_rate_buckets: dict = {}  # client key -> [window, count]
+
+
+def _client_key(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+async def rate_limit_chat(request: Request):
+    limit = RATE_LIMIT_PER_MINUTE
+    if limit <= 0:
+        return
+    window = int(time.time() // 60)
+    # Keep the bucket table from growing unbounded across windows
+    if len(_rate_buckets) > 10_000:
+        for key in [k for k, v in _rate_buckets.items() if v[0] != window]:
+            del _rate_buckets[key]
+    bucket = _rate_buckets.setdefault(_client_key(request), [window, 0])
+    if bucket[0] != window:
+        bucket[0] = window
+        bucket[1] = 0
+    bucket[1] += 1
+    if bucket[1] > limit:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Rate limit exceeded ({limit} chat requests per minute) — "
+                "try again shortly."
+            ),
+        )
 
 # =========================================================
 # REQUEST MODEL
@@ -155,7 +212,7 @@ async def remove_file(req: RemoveFileRequest):
 # CHAT ENDPOINT
 # =========================================================
 
-@app.post("/chat")
+@app.post("/chat", dependencies=[Depends(rate_limit_chat)])
 async def chat(req: ChatRequest):
     user_message = req.message.strip()
 

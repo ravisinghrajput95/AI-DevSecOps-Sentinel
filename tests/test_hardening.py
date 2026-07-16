@@ -69,6 +69,39 @@ def test_api_key_required_when_configured(client, monkeypatch):
 
 
 # =========================================================
+# RATE LIMIT — /chat
+# =========================================================
+
+def test_chat_rate_limited_per_client(client, monkeypatch):
+    monkeypatch.setattr(m, "RATE_LIMIT_PER_MINUTE", 2)
+    monkeypatch.setattr(m.time, "time", lambda: 1_000_000.0)
+    m._rate_buckets.clear()
+
+    payload = {"message": "hello", "history": [], "files": []}
+    assert client.post("/chat", json=payload).status_code == 200
+    assert client.post("/chat", json=payload).status_code == 200
+    r = client.post("/chat", json=payload)
+    assert r.status_code == 429
+    assert "Rate limit" in r.json()["detail"]
+
+    # A different client (per X-Forwarded-For) has its own bucket
+    r = client.post("/chat", headers={"X-Forwarded-For": "10.0.0.9"}, json=payload)
+    assert r.status_code == 200
+
+    # Next minute window resets the count
+    monkeypatch.setattr(m.time, "time", lambda: 1_000_060.0)
+    assert client.post("/chat", json=payload).status_code == 200
+
+
+def test_rate_limit_zero_disables(client, monkeypatch):
+    monkeypatch.setattr(m, "RATE_LIMIT_PER_MINUTE", 0)
+    m._rate_buckets.clear()
+    payload = {"message": "hello", "history": [], "files": []}
+    for _ in range(5):
+        assert client.post("/chat", json=payload).status_code == 200
+
+
+# =========================================================
 # REQUEST BODY SIZE LIMIT
 # =========================================================
 
