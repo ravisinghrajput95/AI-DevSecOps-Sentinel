@@ -6,6 +6,16 @@ on:
     # Weekly — Mondays 06:00 UTC. Catches regressions from scanner
     # releases and rule-set drift.
     - cron: "0 6 * * 1"
+  push:
+    branches: [main]
+    # Only changes that can shift detection behavior: scanner
+    # adapters, the pinned scanner versions in the image, the
+    # benchmark itself
+    paths:
+      - "backend/scanners/**"
+      - "backend/Dockerfile"
+      - "evals/**"
+      - ".github/workflows/evals.yml"
 
 jobs:
   benchmark:
