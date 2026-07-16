@@ -79,6 +79,9 @@ AI ever reasons about them:
 * **hadolint** — Dockerfile best-practice linting
 * **semgrep** — SAST for application code (Python, JS/TS, Java, Go)
 * **kubesec** — Kubernetes manifest risk scoring
+* **injection-guard** — built-in prompt-injection detection: flags
+  file content that tries to manipulate the AI analysis (instruction
+  overrides, finding suppression, fake chat tokens, hidden Unicode)
 
 The AI treats scanner output as verified ground truth: it correlates
 findings across tools and files, deduplicates, prioritizes by

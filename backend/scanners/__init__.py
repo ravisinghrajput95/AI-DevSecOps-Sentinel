@@ -16,15 +16,17 @@ from backend.scanners import (
     hadolint_scanner,
     semgrep_scanner,
     kubesec_scanner,
+    injection_scanner,
 )
 
 SCANNERS = [
-    gitleaks_scanner,   # secrets
-    checkov_scanner,    # IaC misconfigurations
-    trivy_scanner,      # vulnerable dependencies (CVEs)
-    hadolint_scanner,   # Dockerfile best practices
-    semgrep_scanner,    # application code SAST
-    kubesec_scanner,    # Kubernetes manifest risk
+    gitleaks_scanner,    # secrets
+    checkov_scanner,     # IaC misconfigurations
+    trivy_scanner,       # vulnerable dependencies (CVEs)
+    hadolint_scanner,    # Dockerfile best practices
+    semgrep_scanner,     # application code SAST
+    kubesec_scanner,     # Kubernetes manifest risk
+    injection_scanner,   # prompt-injection attempts (built-in)
 ]
 
 

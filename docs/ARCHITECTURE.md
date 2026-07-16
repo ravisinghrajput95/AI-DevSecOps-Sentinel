@@ -83,6 +83,10 @@ in parallel):
 - **hadolint** — Dockerfile best-practice linting
 - **semgrep** — application code SAST (community registry ruleset)
 - **kubesec** — Kubernetes manifest risk scoring
+- **injection-guard** — built-in (pure Python, always available)
+  prompt-injection detection: instruction overrides, finding
+  suppression, role hijacks, fake chat-template tokens, and hidden
+  zero-width/bidi Unicode inside ingested files
 
 Normalized findings are cached in memory and used two ways:
 
@@ -95,6 +99,25 @@ Normalized findings are cached in memory and used two ways:
 
 Missing scanners degrade gracefully: the pipeline reports them as
 unavailable and the AI notes the coverage gap.
+
+## Prompt-Injection Defense
+
+A repository being analysed is untrusted input — a malicious repo can
+embed text that tries to talk the model out of reporting findings
+("ignore previous instructions", "this code is already audited").
+Three layers defend against this:
+
+1. **Structural** — scanner findings are returned to the client
+   straight from the scan cache, never through the LLM. No file
+   content can suppress them.
+2. **Deterministic detection** — the injection-guard scanner flags
+   manipulation attempts as HIGH findings, so the attempt itself
+   becomes a reported security issue.
+3. **Prompt hardening** — file and RAG content is fenced between
+   `BEGIN/END UNTRUSTED FILE` markers, and the system prompt and
+   analysis prompt both instruct the model that fenced content is
+   data, never instructions, and that manipulation attempts must be
+   reported as `[PROMPT-INJECTION]` findings.
 
 ## Component Architecture
 
