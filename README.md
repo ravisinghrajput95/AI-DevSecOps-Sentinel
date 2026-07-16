@@ -89,6 +89,25 @@ in a dedicated panel in the UI.
 
 ---
 
+## Measured Detection — Benchmark
+
+Detection quality is not claimed, it is measured: `evals/run_benchmark.py`
+scores the scanner pipeline against deliberately vulnerable repositories
+pinned to specific commits, checking that every documented planted
+vulnerability class ("canary") is detected. No LLM involved — the run is
+deterministic and free.
+
+| Benchmark | Planted issues detected | Total findings | Scan time |
+|---|---|---|---|
+| [bridgecrewio/terragoat](https://github.com/bridgecrewio/terragoat) (Terraform) | **8/8** | 730 | ~5s |
+| [bridgecrewio/cfngoat](https://github.com/bridgecrewio/cfngoat) (CloudFormation) | **6/6** | 79 | ~4s |
+| [madhuakula/kubernetes-goat](https://github.com/madhuakula/kubernetes-goat) (Kubernetes) | **9/9** | 699 | ~8s |
+
+Canary-level detail lives in [evals/RESULTS.md](evals/RESULTS.md); the
+benchmark also runs weekly in CI and fails if any canary regresses.
+
+---
+
 ## AI-Powered Security Reasoning
 
 The platform provides:

@@ -42,11 +42,22 @@ def parse_report(report: dict) -> list:
 
 
 def scan(workspace_dir: str) -> list:
-    # First run downloads the vulnerability DB — allow extra time
+    # --offline-scan: never call external services (e.g. Maven Central
+    # for Java transitive deps) during analysis — those calls are slow,
+    # rate-limited, and make results non-deterministic. Lockfile-based
+    # detection (npm/pip/go/...) is fully local. The vulnerability DB
+    # download on first run is separate and unaffected.
     result = run_command(
-        [TOOL, "fs", "--scanners", "vuln", "--format", "json", "--quiet", workspace_dir],
+        [TOOL, "fs", "--scanners", "vuln", "--offline-scan",
+         "--format", "json", "--quiet", workspace_dir],
         timeout=300,
     )
     if not result.stdout.strip():
+        # A hard failure (e.g. DB download error) must surface as a
+        # scanner error, not masquerade as a clean empty result
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"trivy exited {result.returncode}: {result.stderr.strip()[:300]}"
+            )
         return []
     return parse_report(json.loads(result.stdout))

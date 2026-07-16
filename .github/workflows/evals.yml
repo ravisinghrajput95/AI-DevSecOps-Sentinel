@@ -1,0 +1,54 @@
+name: Detection Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly — Mondays 06:00 UTC. Catches regressions from scanner
+    # releases and rule-set drift.
+    - cron: "0 6 * * 1"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Install security scanners
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+          pip install checkov semgrep
+
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
+            | tar -xz -C "$HOME/.local/bin" gitleaks
+
+          curl -sSfL -o "$HOME/.local/bin/hadolint" \
+            https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          chmod +x "$HOME/.local/bin/hadolint"
+
+          curl -sSfL https://github.com/aquasecurity/trivy/releases/download/v0.72.0/trivy_0.72.0_Linux-64bit.tar.gz \
+            | tar -xz -C "$HOME/.local/bin" trivy
+
+          curl -sSfL https://github.com/controlplaneio/kubesec/releases/download/v2.14.2/kubesec_linux_amd64.tar.gz \
+            | tar -xz -C "$HOME/.local/bin" kubesec
+
+      - name: Run detection benchmark
+        run: python evals/run_benchmark.py
+
+      - name: Publish results to job summary
+        if: always()
+        run: cat evals/RESULTS.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: evals/RESULTS.md
