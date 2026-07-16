@@ -1,12 +1,12 @@
-fastapi
-uvicorn
-gradio
-openai
-python-dotenv
-requests
-faiss-cpu
-numpy
+# Pinned to the versions the test suite runs against.
+fastapi==0.139.0
+uvicorn==0.51.0
+openai==2.45.0
+python-dotenv==1.2.2
+requests==2.34.2
+faiss-cpu==1.14.3
+numpy==2.5.1
 
 # dev / test
-pytest
-httpx
+pytest==9.1.1
+httpx==0.28.1

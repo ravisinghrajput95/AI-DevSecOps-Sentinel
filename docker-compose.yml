@@ -1,0 +1,55 @@
+# =========================================================
+# AI DevSecOps Sentinel — production-shaped local deployment
+#
+#   docker compose up --build
+#   -> UI + API on http://localhost:80
+#
+# Variables are read from .env in this directory. Only
+# OPENAI_API_KEY is required; everything else has safe
+# defaults (see docs/DEPLOYMENT.md).
+# =========================================================
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required (set it in .env)}
+      SENTINEL_API_KEY: ${SENTINEL_API_KEY:-}
+      SENTINEL_LLM_MODEL: ${SENTINEL_LLM_MODEL:-gpt-4o}
+      SENTINEL_MAX_REQUEST_MB: ${SENTINEL_MAX_REQUEST_MB:-80}
+      SENTINEL_RATE_LIMIT_PER_MIN: ${SENTINEL_RATE_LIMIT_PER_MIN:-20}
+      # Same-origin behind nginx, so CORS defaults are fine;
+      # override only for split-origin deployments.
+      SENTINEL_CORS_ORIGINS: ${SENTINEL_CORS_ORIGINS:-}
+    volumes:
+      # Persist trivy's CVE DB and semgrep's ruleset between
+      # restarts — first scan is slow without this.
+      - scanner-cache:/home/sentinel/.cache
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    # No host port on purpose — the API is only reachable
+    # through the nginx proxy in the frontend container.
+
+  frontend:
+    build:
+      context: frontend
+      args:
+        # The UI sends this as X-API-Key; keep it identical
+        # to SENTINEL_API_KEY (see note in frontend/Dockerfile).
+        VITE_SENTINEL_API_KEY: ${SENTINEL_API_KEY:-}
+    ports:
+      - "${SENTINEL_HTTP_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  scanner-cache:

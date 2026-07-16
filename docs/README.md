@@ -6,6 +6,7 @@ Welcome to the AI DevSecOps Sentinel documentation. This folder contains compreh
 
 ### Getting Started
 - [Setup Guide](SETUP.md) - Installation, configuration, and running the application
+- [Deployment](DEPLOYMENT.md) - Production-shaped container deployment (docker compose, nginx, pinned scanners)
 - [Quick Start](QUICKSTART.md) - Get up and running in 5 minutes
 
 ### Understanding the Project
