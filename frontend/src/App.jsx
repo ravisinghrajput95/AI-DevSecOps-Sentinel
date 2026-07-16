@@ -1715,6 +1715,16 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
       const answer = data.response || "No response received.";
       setHistory(prev => [...prev, [text, answer]]);
 
+      // GitHub repo ingested server-side — surface it in the sidebar
+      // as an already-sent entry so the ✕ removal endpoint works on it
+      if (data.repo?.zip_name) {
+        setUploadedFiles(prev =>
+          prev.some(f => f.name === data.repo.zip_name)
+            ? prev
+            : [...prev, { name: data.repo.zip_name, sent: true, isRepo: true }]
+        );
+      }
+
       if (filesToSend.length > 0) {
         filesToSend.forEach(markFileAsSent);
         setUploadedFiles(prev =>
@@ -1852,7 +1862,7 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                placeholder="Ask anything — or upload files for a full security audit..."
+                placeholder="Ask anything — upload files or paste a GitHub repo URL for a full security audit..."
                 disabled={isLoading}
                 rows={1}
                 style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "#e6edf3", fontSize: "14px", lineHeight: "1.6", padding: "12px 14px", resize: "none", display: "block" }}

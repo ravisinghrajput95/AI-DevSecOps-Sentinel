@@ -95,6 +95,15 @@ def ingest_zip(zip_path):
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
         safe_extract(zip_ref, extract_path)
 
+    # GitHub zipballs (and many hand-made zips) wrap everything in a
+    # single top-level directory — flatten it so file paths are clean.
+    entries = os.listdir(extract_path)
+    if len(entries) == 1 and os.path.isdir(os.path.join(extract_path, entries[0])):
+        wrapper = os.path.join(extract_path, entries[0])
+        for item in os.listdir(wrapper):
+            shutil.move(os.path.join(wrapper, item), extract_path)
+        os.rmdir(wrapper)
+
     indexed_files = []
 
     for root, dirs, files in os.walk(extract_path):

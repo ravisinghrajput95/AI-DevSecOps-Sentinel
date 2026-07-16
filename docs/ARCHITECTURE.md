@@ -57,8 +57,11 @@ AI DevSecOps Sentinel is a full-stack application that combines:
 
 ## Scanner-Grounded Analysis
 
-Uploaded files are persisted to a `workspace/` directory and scanned
-once per upload batch by deterministic tools (run in parallel):
+Files arrive as direct uploads, `.zip` archives, or a public GitHub
+repo URL pasted in chat (downloaded as a zipball — no git binary or
+token needed, 50 MB cap). Everything is persisted to a `workspace/`
+directory and scanned once per ingestion by deterministic tools (run
+in parallel):
 
 - **gitleaks** — hardcoded secrets (findings are CRITICAL; secret
   values are redacted before storage)

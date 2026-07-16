@@ -41,6 +41,15 @@ def get_embedding(text):
     )
     return response.data[0].embedding
 
+
+def get_embeddings(texts: list) -> list:
+    """Batched embeddings — one API call for all chunks of a file."""
+    response = get_client().embeddings.create(
+        model="text-embedding-3-small",
+        input=texts
+    )
+    return [item.embedding for item in response.data]
+
 # =========================================================
 # ADD DOCUMENT
 # Supports both calling conventions:
@@ -64,23 +73,30 @@ def add_document(
         return
 
     chunks = chunk_text(actual_text)
+    if not chunks:
+        return
 
-    for chunk in chunks:
-        try:
-            embedding = get_embedding(chunk)
-            vector = np.array([embedding]).astype("float32")
-            index.add(vector)
-            documents.append({
-                "content": chunk,
-                "source": source,
-                "project_id": actual_project,
-                "topic": topic,
-                # kept so removals can rebuild the index without
-                # paying for re-embedding; never leaves the process
-                "vector": embedding,
-            })
-        except Exception as e:
-            print("Embedding error:", e)
+    # One batched API call per file instead of one per chunk —
+    # repo-scale ingestion goes from hundreds of round-trips to
+    # one per file.
+    try:
+        embeddings = get_embeddings(chunks)
+    except Exception as e:
+        print("Embedding error:", e)
+        return
+
+    for chunk, embedding in zip(chunks, embeddings):
+        vector = np.array([embedding]).astype("float32")
+        index.add(vector)
+        documents.append({
+            "content": chunk,
+            "source": source,
+            "project_id": actual_project,
+            "topic": topic,
+            # kept so removals can rebuild the index without
+            # paying for re-embedding; never leaves the process
+            "vector": embedding,
+        })
 
 # =========================================================
 # PROJECT FILTER

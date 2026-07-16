@@ -173,6 +173,7 @@ The assistant correlates explanations with uploaded repository context whenever 
 * Kubernetes manifests
 * GitHub Actions workflows
 * ZIP repositories
+* Public GitHub repositories — paste a repo URL in chat (supports `/tree/<branch>`, 50 MB limit)
 
 ---
 

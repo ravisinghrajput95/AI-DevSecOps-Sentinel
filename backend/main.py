@@ -13,6 +13,11 @@ from backend.file_handler import (
 from backend.llm import ask_openai
 from backend.memory import memory
 from backend.intent_engine import detect_intent
+from backend.github_ingest import (
+    ingest_github_repo,
+    parse_github_url,
+    strip_github_url,
+)
 from backend.rag import clear_rag
 from backend.redaction import clear_secrets, scrub_secrets
 from backend.scanners import scanner_status
@@ -98,6 +103,58 @@ async def chat(req: ChatRequest):
         save_uploaded_files(req.files)
 
     # =====================================================
+    # GITHUB URL INGESTION
+    # A pasted repo URL is downloaded and ingested through
+    # the zip path (workspace + RAG + full scanner run).
+    # Bare URL -> fast canned summary with findings attached;
+    # URL + a question -> ingest, then continue to the LLM.
+    # =====================================================
+
+    github_ref = parse_github_url(user_message)
+    ingested_repo = None
+    if github_ref:
+        owner, repo, branch = github_ref
+        print(f"GITHUB INGEST: {owner}/{repo}" + (f"@{branch}" if branch else ""))
+        try:
+            ingested_repo = ingest_github_repo(owner, repo, branch)
+        except ValueError as e:
+            return {"response": f"⚠️ Could not ingest the repository: {e}"}
+
+        remainder = strip_github_url(user_message)
+        if len(remainder.split()) < 3:
+            # Bare URL — summarize without an LLM call
+            scan = memory.get("scan") or {}
+            findings = scan.get("findings", [])
+            counts = {}
+            for f in findings:
+                counts[f["severity"]] = counts.get(f["severity"], 0) + 1
+            breakdown = ", ".join(
+                f"{counts[s]} {s.lower()}"
+                for s in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+                if counts.get(s)
+            ) or "none"
+            return {
+                "response": (
+                    f"📦 Ingested **{ingested_repo['name']}** — "
+                    f"{ingested_repo['files']} files indexed and scanned.\n\n"
+                    f"Verified scanner findings: **{len(findings)}** ({breakdown}).\n\n"
+                    f"What would you like to do next?\n\n"
+                    f"- Full security audit\n"
+                    f"- Show all critical findings\n"
+                    f"- Check for hardcoded secrets\n"
+                    f"- Walk me through this repo"
+                ),
+                "findings": findings,
+                "scanners": {
+                    "run": scan.get("tools_run", []),
+                    "missing": scan.get("tools_missing", []),
+                },
+                "repo": ingested_repo,
+            }
+        # URL + question — analyse with the freshly ingested context
+        user_message = remainder
+
+    # =====================================================
     # INTENT DETECTION
     # All canned intents (greeting, small talk, clear,
     # acknowledgement, off-topic) are answered here without
@@ -137,7 +194,7 @@ async def chat(req: ChatRequest):
                 "Hey! I'm AI DevSecOps Sentinel — your senior DevOps & DevSecOps engineer.\n\n"
                 "I can help you with:\n\n"
                 "- **File analysis** — upload a Dockerfile, Terraform, Helm chart, "
-                "K8s manifests, CI/CD pipeline, or a full GitHub `.zip`\n"
+                "K8s manifests, CI/CD pipeline, a `.zip` — or just paste a GitHub repo URL\n"
                 "- **Security audits** — secrets, misconfigurations, vulnerable dependencies\n"
                 "- **General DevOps knowledge** — CI/CD, Kubernetes, Docker, Terraform, "
                 "ArgoCD, Helm, observability, and more\n\n"
@@ -218,7 +275,7 @@ async def chat(req: ChatRequest):
                     "Helm charts, and CI/CD pipelines\n"
                     "- Detecting hardcoded secrets, misconfigurations, and vulnerable dependencies\n"
                     "- Answering DevOps and DevSecOps questions with real examples and code\n\n"
-                    "Upload a file or a GitHub `.zip` to get started."
+                    "Upload a file, a `.zip`, or paste a GitHub repo URL to get started."
                 )
             }
 
@@ -292,4 +349,5 @@ async def chat(req: ChatRequest):
             "run": scan.get("tools_run", []),
             "missing": scan.get("tools_missing", []),
         },
+        "repo": ingested_repo,
     }
