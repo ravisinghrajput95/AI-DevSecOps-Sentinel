@@ -1336,10 +1336,41 @@ function ScannerFindingsPanel({ findings, scannersRun }) {
 }
 
 // =========================================================
+// REPO FOLLOW-UPS
+// One-click next steps shown on repo-ingestion summaries
+// =========================================================
+
+const REPO_FOLLOW_UPS = [
+  { icon: "🛡️", label: "Full security audit", msg: "Run a full security audit on the repository" },
+  { icon: "🔴", label: "Critical findings", msg: "Show all critical findings with fixes" },
+  { icon: "🔑", label: "Hardcoded secrets", msg: "Are there hardcoded secrets in this repo?" },
+  { icon: "🗺️", label: "Walk me through it", msg: "Walk me through this repo" },
+];
+
+function RepoFollowUps({ onSend }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "12px" }}>
+      {REPO_FOLLOW_UPS.map((a, i) => (
+        <button key={i} onClick={() => onSend(a.msg)} style={{
+          display: "flex", alignItems: "center", gap: "5px",
+          background: "#161b22", border: "1px solid #30363d",
+          borderRadius: "6px", padding: "6px 11px", cursor: "pointer",
+          color: "#c9d1d9", fontSize: "12px", transition: "all 0.2s",
+        }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "#2ea043"; e.currentTarget.style.color = "#2ea043"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "#30363d"; e.currentTarget.style.color = "#c9d1d9"; }}>
+          <span>{a.icon}</span> {a.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// =========================================================
 // CHAT MESSAGE
 // =========================================================
 
-function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatestAssistant, scannerFindings, scannersRun }) {
+function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatestAssistant, scannerFindings, scannersRun, repo }) {
   const isUser = role === "user";
 
   // Only parse structured file analysis for the LATEST assistant message.
@@ -1401,6 +1432,7 @@ function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatest
               <ScannerFindingsPanel findings={scannerFindings} scannersRun={scannersRun} />
             )}
             <MarkdownBlock text={content} />
+            {isLatestAssistant && repo && onSend && <RepoFollowUps onSend={onSend} />}
           </div>
         )}
       </div>
@@ -1748,6 +1780,7 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
           content: answer,
           scannerFindings: data.findings || [],
           scannersRun: data.scanners?.run || [],
+          repo: data.repo || null,
         };
         return u;
       });
@@ -1848,6 +1881,7 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
                   isLatestAssistant={isLatestAssistant}
                   scannerFindings={msg.scannerFindings}
                   scannersRun={msg.scannersRun}
+                  repo={msg.repo}
                 />
               );
             })}

@@ -138,11 +138,7 @@ async def chat(req: ChatRequest):
                     f"📦 Ingested **{ingested_repo['name']}** — "
                     f"{ingested_repo['files']} files indexed and scanned.\n\n"
                     f"Verified scanner findings: **{len(findings)}** ({breakdown}).\n\n"
-                    f"What would you like to do next?\n\n"
-                    f"- Full security audit\n"
-                    f"- Show all critical findings\n"
-                    f"- Check for hardcoded secrets\n"
-                    f"- Walk me through this repo"
+                    f"Pick a next step below, or ask me anything about the repository."
                 ),
                 "findings": findings,
                 "scanners": {
