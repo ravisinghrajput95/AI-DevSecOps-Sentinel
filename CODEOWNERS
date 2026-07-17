@@ -1,0 +1,11 @@
+# Default owner for everything in the repo.
+* @ravisinghrajput95
+
+# The security-sensitive surfaces get explicit ownership so changes
+# to them always route to a review.
+/backend/scanners/         @ravisinghrajput95
+/backend/redaction.py      @ravisinghrajput95
+/backend/prompt_engine.py  @ravisinghrajput95
+/.github/                  @ravisinghrajput95
+/deploy/                   @ravisinghrajput95
+/infra/                    @ravisinghrajput95

@@ -5,20 +5,20 @@ Welcome to the AI DevSecOps Sentinel documentation. This folder contains compreh
 ## 📚 Documentation Index
 
 ### Getting Started
+- [Quick Start](QUICKSTART.md) - Up and running in a few minutes
 - [Setup Guide](SETUP.md) - Installation, configuration, and running the application
-- [Deployment](DEPLOYMENT.md) - Production-shaped container deployment (docker compose, nginx, pinned scanners)
-- [Quick Start](QUICKSTART.md) - Get up and running in 5 minutes
+- [Deployment](DEPLOYMENT.md) - docker compose + GKE (Helm, TLS, supply chain, observability)
 
 ### Understanding the Project
 - [Architecture](ARCHITECTURE.md) - System design, components, and data flow
-- [Features](FEATURES.md) - Detailed feature documentation
+- [Features](../README.md#-features) - Feature overview (in the main README)
 
 ### Development
-- [API Documentation](API.md) - REST API endpoints and usage examples
-- [Contributing](CONTRIBUTING.md) - How to contribute to the project
+- [API Reference](API.md) - REST endpoints, headers, and status codes
+- [Contributing](../CONTRIBUTING.md) - Local setup, tests, CI, and conventions
 
 ### Support
-- [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
+- [Troubleshooting](TROUBLESHOOTING.md) - Common issues and fixes
 - [FAQ](FAQ.md) - Frequently asked questions
 
 ## 🎯 What is AI DevSecOps Sentinel?
@@ -32,14 +32,14 @@ AI DevSecOps Sentinel is an AI-powered assistant that:
 
 ## 🚀 Quick Navigation
 
-**New to the project?** Start with [Setup Guide](SETUP.md)
+**New to the project?** Start with the [Quick Start](QUICKSTART.md)
 
 **Want to understand how it works?** Read [Architecture](ARCHITECTURE.md)
 
-**Looking to integrate?** Check [API Documentation](API.md)
+**Looking to integrate?** Check the [API Reference](API.md)
 
 **Having issues?** See [Troubleshooting](TROUBLESHOOTING.md)
 
 ---
 
-**Last Updated:** May 2026
+**Last Updated:** July 2026
