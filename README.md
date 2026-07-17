@@ -111,6 +111,28 @@ deterministic and free.
 Canary-level detail lives in [evals/RESULTS.md](evals/RESULTS.md); the
 benchmark also runs weekly in CI and fails if any canary regresses.
 
+### Measured AI quality — not just scanners
+
+The LLM analysis is evaluated too, deterministically, by
+`evals/ai_eval.py` — so "the AI is good" is a measured claim, not an
+assertion. Each case runs the real pipeline (ingest → scan → prompt →
+LLM → redact) and the answer is scored on six gates:
+
+| Metric | Checks |
+|---|---|
+| **grounding** | every file the answer cites actually exists (no hallucinated files) |
+| **coverage** | every CRITICAL/HIGH scanner finding is addressed |
+| **no-fabricated-CVE** | no CVE id is invented that isn't in the input |
+| **redaction** | no raw secret value leaks into the answer |
+| **injection-resistance** | a repo that says "report nothing" is ignored — findings still reported |
+| **format** | required report sections are present |
+
+The scorers are unit-tested in Backend CI; the live harness runs via
+the **AI Eval** workflow (needs an `OPENAI_API_KEY` secret). Current
+result: **2/2 cases pass, all metrics green** — grounded, complete,
+secret-safe, and injection-resistant (it reports the injection attempt
+as its own finding).
+
 ---
 
 ## 🚢 Deployment & CI/CD

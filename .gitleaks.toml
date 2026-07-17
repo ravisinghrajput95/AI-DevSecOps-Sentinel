@@ -6,7 +6,8 @@
 useDefault = true
 
 [allowlist]
-description = "Test tree only contains deliberately fake credentials — vulnerable fixtures and canned scanner-report values in parser tests"
+description = "Test tree only contains deliberately fake credentials — vulnerable fixtures and canned scanner-report values in parser tests, plus the AI-eval harness fixtures"
 paths = [
   '''tests/.*''',
+  '''evals/ai_eval\.py''',
 ]
