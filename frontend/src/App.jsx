@@ -12,7 +12,12 @@ const FASTAPI_URL = "/chat";
 const SESSION_ID = (() => {
   let id = sessionStorage.getItem("devops_sentinel_sid");
   if (!id) {
-    id = crypto.randomUUID();
+    // crypto.randomUUID exists only in secure contexts (HTTPS or
+    // localhost). Over plain HTTP — e.g. a bare LoadBalancer IP —
+    // it is undefined and an unguarded call blanks the whole app.
+    id = window.crypto?.randomUUID
+      ? crypto.randomUUID()
+      : `sid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     sessionStorage.setItem("devops_sentinel_sid", id);
   }
   return id;
