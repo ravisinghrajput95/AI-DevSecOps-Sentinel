@@ -339,7 +339,12 @@ into a single engineering assistant platform.
 
 # 📄 License
 
-This project is currently a prototype/internal initiative and intended for learning, experimentation, and DevSecOps workflow innovation.
+Released under the [MIT License](LICENSE) — free to use, modify, and
+distribute. Built as a learning and portfolio project exploring
+DevSecOps, Platform Engineering, and AI-assisted security workflows.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to get set up and
+[CHANGELOG.md](CHANGELOG.md) for what's changed.
 
 ---
 
