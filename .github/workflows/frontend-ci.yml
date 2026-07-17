@@ -117,6 +117,11 @@ jobs:
           docker tag sentinel-frontend:${{ github.sha }} "$GAR/sentinel-frontend:${{ github.sha }}"
           docker push "$GAR/sentinel-frontend:${{ github.sha }}"
 
+      - name: Supply chain — SBOM, scan, sign
+        uses: ./.github/actions/supply-chain
+        with:
+          image: ${{ env.GAR }}/sentinel-frontend:${{ github.sha }}
+
   # =========================================================
   # DEPLOY — helm upgrade setting only THIS component's tag;
   # --reuse-values keeps the other component's deployed tag.
