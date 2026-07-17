@@ -17,12 +17,16 @@ on:
     paths:
       - "frontend/**"
       - ".github/workflows/frontend-ci.yml"
+      - ".github/actions/**"
+      - ".trivyignore.yaml"
       - "deploy/helm/**"
   pull_request:
     branches: [main]
     paths:
       - "frontend/**"
       - ".github/workflows/frontend-ci.yml"
+      - ".github/actions/**"
+      - ".trivyignore.yaml"
       - "deploy/helm/**"
 
 concurrency:

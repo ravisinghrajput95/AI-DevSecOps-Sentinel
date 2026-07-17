@@ -19,6 +19,8 @@ on:
       - "evals/**"
       - "requirements.txt"
       - ".github/workflows/backend-ci.yml"
+      - ".github/actions/**"
+      - ".trivyignore.yaml"
       - "deploy/helm/**"
   pull_request:
     branches: [main]
@@ -28,6 +30,8 @@ on:
       - "evals/**"
       - "requirements.txt"
       - ".github/workflows/backend-ci.yml"
+      - ".github/actions/**"
+      - ".trivyignore.yaml"
       - "deploy/helm/**"
 
 concurrency:
