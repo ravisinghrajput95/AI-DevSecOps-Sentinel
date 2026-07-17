@@ -1,0 +1,72 @@
+# =========================================================
+# SUPPLY-CHAIN — SBOM + vulnerability scan + keyless signing
+# for one image that was just pushed to Artifact Registry.
+#
+# A DevSecOps tool should meet the bar it holds others to:
+# every image this repo ships is scanned, gets an SBOM, and
+# is signed + attested with cosign keyless (Sigstore/Fulcio/
+# Rekor) using the workflow's own OIDC identity — no keys.
+#
+# Verify a signed image later with:
+#   cosign verify <image>@<digest> \
+#     --certificate-identity-regexp 'https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/.*' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+# =========================================================
+
+name: Supply chain (SBOM, scan, sign)
+description: Generate an SBOM, scan for vulnerabilities, and cosign-sign an image by digest.
+
+inputs:
+  image:
+    description: Fully qualified image ref including tag (registry/repo/name:tag)
+    required: true
+  fail-on-severity:
+    description: Comma-separated severities that FAIL the scan (fixable only)
+    required: false
+    default: CRITICAL
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve image digest
+      id: digest
+      shell: bash
+      run: |
+        # Sign/attest by immutable digest, never a mutable tag
+        digest=$(docker inspect --format='{{index .RepoDigests 0}}' "${{ inputs.image }}")
+        if [ -z "$digest" ]; then
+          echo "could not resolve digest for ${{ inputs.image }}" >&2
+          exit 1
+        fi
+        echo "ref=$digest" >> "$GITHUB_OUTPUT"
+        echo "Signing/attesting: $digest"
+
+    - name: Generate SBOM (SPDX JSON)
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        image: ${{ steps.digest.outputs.ref }}
+        format: spdx-json
+        output-file: sbom.spdx.json
+        upload-artifact: true
+
+    - name: Vulnerability scan (fail on fixable criticals)
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ${{ steps.digest.outputs.ref }}
+        format: table
+        exit-code: "1"
+        severity: ${{ inputs.fail-on-severity }}
+        ignore-unfixed: "true"
+        vuln-type: os,library
+
+    - name: Install cosign
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+    - name: Sign image (keyless) + attest SBOM
+      shell: bash
+      run: |
+        set -euo pipefail
+        REF="${{ steps.digest.outputs.ref }}"
+        # Keyless: identity is this workflow's OIDC token, logged to Rekor
+        cosign sign --yes "$REF"
+        cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$REF"

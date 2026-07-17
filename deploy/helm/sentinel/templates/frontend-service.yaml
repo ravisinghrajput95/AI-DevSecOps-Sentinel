@@ -6,12 +6,18 @@ metadata:
     {{- include "sentinel.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
 spec:
+  {{- if .Values.ingress.enabled }}
+  # Behind the ingress: the ingress-nginx controller is the public
+  # entrypoint, so the frontend Service is internal only.
+  type: ClusterIP
+  {{- else }}
   type: {{ .Values.frontend.service.type }}
   {{- if eq .Values.frontend.service.type "LoadBalancer" }}
   # Preserve the real client source IP to nginx (default Cluster
   # SNATs it to a node IP). Without this the backend's per-client
   # rate limit keys on a handful of node IPs instead of real clients.
   externalTrafficPolicy: Local
+  {{- end }}
   {{- end }}
   selector:
     app.kubernetes.io/name: {{ .Chart.Name }}

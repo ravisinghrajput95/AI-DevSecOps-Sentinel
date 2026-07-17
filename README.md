@@ -147,6 +147,11 @@ push → tests → docker build + smoke test → push SHA-tagged image
 PVC-backed scanner cache, LoadBalancer or GCE Ingress, and secrets
 sourced from a pre-created Kubernetes Secret — never from values.
 
+**Supply chain**: every published image gets an SBOM (syft), a trivy
+scan that blocks fixable-critical vulnerabilities, and a keyless
+cosign signature + SBOM attestation (Sigstore, via the workflow's
+OIDC identity — no keys). The tool meets the bar it holds others to.
+
 ```bash
 kubectl get svc sentinel-frontend   # EXTERNAL-IP = the UI
 ```
