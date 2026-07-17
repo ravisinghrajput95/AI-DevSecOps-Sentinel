@@ -1,0 +1,23 @@
+# =========================================================
+# Triaged, TIME-BOXED trivy exceptions for the backend image.
+# The supply-chain gate (.github/actions/supply-chain) still
+# fails the build on any CRITICAL not listed here.
+#
+# Each entry needs: a justification and an expired_at date. When
+# an entry expires, trivy stops honoring it and the gate blocks
+# again — forcing a re-review instead of a silent forever-ignore.
+# =========================================================
+vulnerabilities:
+  - id: CVE-2025-68121
+    # Go stdlib crypto/tls (incorrect cert validation during TLS
+    # session resumption). Present in a bundled third-party scanner
+    # binary that is ALREADY at its latest release (trivy 0.72.0 /
+    # gitleaks 8.30.1 / kubesec 2.14.2) — the fix requires the
+    # upstream maintainer to rebuild with Go >= 1.24.13, which we
+    # do not control. The scanners run offline against uploaded
+    # files inside the pod and do not act as a TLS server, so the
+    # session-resumption path is not reachable in our use.
+    statement: >-
+      Bundled third-party scanner binary at latest release; awaiting
+      upstream rebuild with patched Go. Not reachable in our usage.
+    expired_at: 2026-09-01
