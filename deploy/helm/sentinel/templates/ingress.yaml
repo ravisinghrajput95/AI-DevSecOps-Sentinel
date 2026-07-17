@@ -1,16 +1,30 @@
 {{- if .Values.ingress.enabled }}
+{{- /* default to an empty dict so a --reuse-values upgrade whose
+       stored values predate the tls key can't nil-pointer here */ -}}
+{{- $tls := .Values.ingress.tls | default dict }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "sentinel.fullname" . }}
   labels:
     {{- include "sentinel.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
   annotations:
+    {{- if $tls.enabled }}
+    # cert-manager watches this and issues/renews the cert into
+    # the tls secretName below via the named ClusterIssuer.
+    cert-manager.io/cluster-issuer: {{ $tls.clusterIssuer | quote }}
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
 spec:
-  ingressClassName: {{ .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- if $tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ $tls.secretName | quote }}
+  {{- end }}
   rules:
     - host: {{ .Values.ingress.host | quote }}
       http:

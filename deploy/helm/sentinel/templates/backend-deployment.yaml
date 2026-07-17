@@ -51,6 +51,12 @@ spec:
               value: {{ .Values.backend.env.maxRequestMb | quote }}
             - name: SENTINEL_RATE_LIMIT_PER_MIN
               value: {{ .Values.backend.env.rateLimitPerMin | quote }}
+            # Trusted reverse-proxy hops for client-IP extraction:
+            # 1 = just the SPA nginx (LoadBalancer path); 2 = ingress-
+            # nginx + SPA nginx (TLS path). Wrong value → rate limit
+            # keys on a proxy IP instead of the real client.
+            - name: SENTINEL_TRUSTED_PROXY_HOPS
+              value: {{ if .Values.ingress.enabled }}"2"{{ else }}"1"{{ end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           readinessProbe:
