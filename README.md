@@ -1,6 +1,8 @@
 # AI DevSecOps Sentinel
 
-[![CI](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/ci.yml)
+[![Backend CI](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/backend-ci.yml)
+[![Frontend CI](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/frontend-ci.yml)
+[![Secret Scan](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/secret-scan.yml)
 
 AI DevSecOps Sentinel is an AI-powered DevOps and DevSecOps engineering assistant that performs contextual repository analysis, security reviews, infrastructure validation, and secure engineering guidance using AI-driven reasoning.
 
@@ -108,6 +110,50 @@ deterministic and free.
 
 Canary-level detail lives in [evals/RESULTS.md](evals/RESULTS.md); the
 benchmark also runs weekly in CI and fails if any canary regresses.
+
+---
+
+## 🚢 Deployment & CI/CD
+
+Runs in production on **GKE Autopilot**, provisioned with Terraform
+and deployed via Helm — the same IaC and manifests the tool itself
+knows how to audit.
+
+**Infrastructure** ([`infra/`](infra/README.md), Terraform with
+GCS-backed state):
+
+* GKE Autopilot cluster + Artifact Registry (us-central1), with
+  image cleanup policies and cluster deletion protection
+* Keyless CI → GCP auth: GitHub OIDC through Workload Identity
+  Federation — no service-account keys anywhere
+
+**Delivery** (per-stack GitHub Actions pipelines, jobs chained with
+`needs`):
+
+```text
+push → tests → docker build + smoke test → push SHA-tagged image
+     → helm upgrade (own component only) → rollout-gated deploy
+```
+
+* Backend and frontend have independent, path-filtered lanes — a
+  frontend-only change never runs backend tests or redeploys the API
+* PRs run tests only; nothing builds or deploys from a PR
+* A standalone secret self-scan runs on every push, and the
+  detection benchmark runs weekly plus on any change that could
+  shift scanner behavior
+
+**Helm chart** (`deploy/helm/sentinel`): hardened security contexts
+(non-root, seccomp, no privilege escalation), health probes, a
+PVC-backed scanner cache, LoadBalancer or GCE Ingress, and secrets
+sourced from a pre-created Kubernetes Secret — never from values.
+
+```bash
+kubectl get svc sentinel-frontend   # EXTERNAL-IP = the UI
+```
+
+For a single VM there's also a **docker compose** deployment
+(`docker compose up --build`). Full details, environment table, and
+operational caveats: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ---
 
