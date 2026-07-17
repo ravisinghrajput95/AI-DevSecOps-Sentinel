@@ -192,14 +192,22 @@ jobs:
         run: |
           # Retry: the two CI lanes can deploy concurrently and
           # helm allows one operation per release at a time
+          # --reset-then-reuse-values (not --reuse-values): keeps prior
+          # user-set values (image tags, ingress) but merges NEW chart
+          # value defaults, so newly added keys never nil-pointer.
+          ok=false
           for attempt in 1 2 3; do
-            helm upgrade --install sentinel deploy/helm/sentinel \
-              --reuse-values \
-              --set backend.image.tag=${{ github.sha }} \
-              && break
-            echo "helm release busy — retry $attempt"
+            if helm upgrade --install sentinel deploy/helm/sentinel \
+                 --reset-then-reuse-values \
+                 --set backend.image.tag=${{ github.sha }}; then
+              ok=true; break
+            fi
+            echo "helm upgrade failed — retry $attempt"
             sleep 30
           done
+          # Fail the job if every attempt failed — otherwise the rollout
+          # check below passes against the OLD deployment and hides it.
+          [ "$ok" = true ] || { echo "::error::helm upgrade failed after 3 attempts"; exit 1; }
           kubectl rollout status deployment/sentinel-backend --timeout=10m
 
       - name: Show pods on failure
