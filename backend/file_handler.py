@@ -263,42 +263,53 @@ def save_uploaded_files(files: list, project_name: str = "default"):
     Expects a list of dicts: {"name": str, "content": base64_str}
     Deduplicates by filename — will not re-ingest a file
     that is already present in memory["files"].
+
+    Returns a list of rejected files as {"name", "reason"} dicts so
+    the caller can tell the user WHY an upload did not appear —
+    rejections used to be swallowed and looked like silent failures.
+    (Deduplicated files are not rejections and are omitted.)
     """
     # Build set of already-ingested filenames
     already_ingested = {f.get("name") for f in memory["files"]}
     ingested_any = False
+    rejected = []
+
+    def reject(name, reason):
+        print(f"Rejected {name}: {reason}")
+        rejected.append({"name": name, "reason": reason})
 
     for file in files:
 
         if not isinstance(file, dict):
-            print(f"Skipping unexpected format: {type(file)}")
+            reject(str(type(file)), "unexpected upload format")
             continue
 
         filename = file.get("name", "unknown")
         b64_content = file.get("content", "")
 
-        # DEDUPLICATION — skip if already in memory
+        # DEDUPLICATION — skip if already in memory (not a rejection)
         if filename in already_ingested:
             print(f"Already ingested, skipping: {filename}")
             continue
 
         if not b64_content:
-            print(f"Skipping file with no content: {filename}")
+            reject(filename, "file was empty")
             continue
 
         try:
             raw_bytes = base64.b64decode(b64_content)
-        except Exception as e:
-            print(f"Base64 decode error for {filename}: {e}")
+        except Exception:
+            reject(filename, "could not decode file content")
             continue
 
         # Per-file size cap — zips get a higher allowance than
         # plain files since they carry whole projects.
         limit = MAX_ZIP_BYTES if filename.lower().endswith(".zip") else MAX_FILE_BYTES
         if len(raw_bytes) > limit:
-            print(
-                f"Skipping {filename}: {len(raw_bytes) // (1024 * 1024)} MB "
-                f"exceeds the {limit // (1024 * 1024)} MB limit"
+            reject(
+                filename,
+                f"{len(raw_bytes) // (1024 * 1024)} MB exceeds the "
+                f"{limit // (1024 * 1024)} MB limit",
             )
             continue
 
@@ -314,19 +325,24 @@ def save_uploaded_files(files: list, project_name: str = "default"):
         try:
             if filename.lower().endswith(".zip"):
                 print(f"Ingesting zip: {filename}")
-                ingest_zip(tmp_path)
+                indexed = ingest_zip(tmp_path)
+                if not indexed:
+                    reject(filename, "no supported files found in the archive")
+                    continue
             else:
                 print(f"Ingesting file: {filename}")
-                ingest_single_file(
+                if not ingest_single_file(
                     filepath=tmp_path,
                     original_filename=filename,
-                    project_name=project_name
-                )
+                    project_name=project_name,
+                ):
+                    reject(filename, "unsupported or unreadable file type")
+                    continue
             # Track as ingested
             already_ingested.add(filename)
             ingested_any = True
         except Exception as e:
-            print(f"Ingest error for {filename}: {e}")
+            reject(filename, str(e))
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
@@ -338,6 +354,8 @@ def save_uploaded_files(files: list, project_name: str = "default"):
     # =====================================================
     if ingested_any:
         memory["scan"] = run_all_scanners(workspace_dir())
+
+    return rejected
 
 
 # =========================================================
