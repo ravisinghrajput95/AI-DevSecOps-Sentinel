@@ -18,6 +18,10 @@ import shutil
 import time
 from contextvars import ContextVar
 
+from backend.logging_setup import get_logger
+
+logger = get_logger(__name__)
+
 SESSION_TTL_SECONDS = 2 * 60 * 60
 WORKSPACE_ROOT = "workspace"
 
@@ -76,7 +80,7 @@ def current() -> Session:
     session = SESSIONS.get(sid)
     if session is None:
         session = SESSIONS[sid] = Session(sid)
-        print(f"Session created: {sid} ({len(SESSIONS)} active)")
+        logger.info("session created id=%s active=%d", sid, len(SESSIONS))
     session.last_used = time.time()
     return session
 
@@ -97,7 +101,7 @@ def destroy(session_id: str):
 def sweep_expired():
     cutoff = time.time() - SESSION_TTL_SECONDS
     for sid in [s for s, sess in SESSIONS.items() if sess.last_used < cutoff]:
-        print(f"Session expired: {sid}")
+        logger.info("session expired id=%s", sid)
         destroy(sid)
 
 

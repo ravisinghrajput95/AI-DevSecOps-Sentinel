@@ -20,6 +20,9 @@ services:
       SENTINEL_LLM_MODEL: ${SENTINEL_LLM_MODEL:-gpt-4o}
       SENTINEL_MAX_REQUEST_MB: ${SENTINEL_MAX_REQUEST_MB:-80}
       SENTINEL_RATE_LIMIT_PER_MIN: ${SENTINEL_RATE_LIMIT_PER_MIN:-20}
+      # Structured logs: json (default) for prod, text for readable local dev
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
       # Same-origin behind nginx, so CORS defaults are fine;
       # override only for split-origin deployments.
       SENTINEL_CORS_ORIGINS: ${SENTINEL_CORS_ORIGINS:-}

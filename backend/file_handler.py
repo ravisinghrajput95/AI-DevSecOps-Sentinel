@@ -3,8 +3,11 @@ import zipfile
 import shutil
 import base64
 import tempfile
+from backend.logging_setup import get_logger
 from backend.rag import add_document, remove_documents
 from backend.memory import memory
+
+logger = get_logger(__name__)
 from backend.project_memory import project_memory
 from backend.redaction import harvest_secrets
 from backend.scanners import run_all_scanners
@@ -201,10 +204,8 @@ def ingest_zip(zip_path):
         "files": len(indexed_files)
     })
 
-    print(f"\n=== INGESTED {len(indexed_files)} FILES FROM {project_name} ===")
-    for f in indexed_files:
-        print(f"  + {f}")
-    print("=" * 50)
+    logger.info("ingested project=%s files=%d", project_name, len(indexed_files))
+    logger.debug("ingested files: %s", indexed_files)
 
     return indexed_files
 
@@ -220,12 +221,12 @@ def ingest_single_file(filepath, original_filename, project_name="default"):
     # special files like "Dockerfile" land in temp storage as "xyz.tmp"
     # and would otherwise always be rejected.
     if not is_supported_file(original_filename):
-        print(f"Unsupported file type: {original_filename}")
+        logger.warning("unsupported file type: %s", original_filename)
         return False
 
     content = read_file_content(filepath)
     if not content or not content.strip():
-        print(f"Empty or unreadable file: {original_filename}")
+        logger.warning("empty or unreadable file: %s", original_filename)
         return False
 
     # Persist into the scan workspace so scanners can see it.
@@ -253,7 +254,7 @@ def ingest_single_file(filepath, original_filename, project_name="default"):
         topic="file"
     )
 
-    print(f"Ingested: {original_filename} ({len(content)} chars)")
+    logger.info("ingested file=%s chars=%d", original_filename, len(content))
     return True
 
 
@@ -275,7 +276,7 @@ def save_uploaded_files(files: list, project_name: str = "default"):
     rejected = []
 
     def reject(name, reason):
-        print(f"Rejected {name}: {reason}")
+        logger.warning("rejected upload name=%s reason=%s", name, reason)
         rejected.append({"name": name, "reason": reason})
 
     for file in files:
@@ -289,7 +290,7 @@ def save_uploaded_files(files: list, project_name: str = "default"):
 
         # DEDUPLICATION — skip if already in memory (not a rejection)
         if filename in already_ingested:
-            print(f"Already ingested, skipping: {filename}")
+            logger.debug("already ingested, skipping: %s", filename)
             continue
 
         if not b64_content:
@@ -324,13 +325,13 @@ def save_uploaded_files(files: list, project_name: str = "default"):
 
         try:
             if filename.lower().endswith(".zip"):
-                print(f"Ingesting zip: {filename}")
+                logger.info("ingesting zip: %s", filename)
                 indexed = ingest_zip(tmp_path)
                 if not indexed:
                     reject(filename, "no supported files found in the archive")
                     continue
             else:
-                print(f"Ingesting file: {filename}")
+                logger.info("ingesting file: %s", filename)
                 if not ingest_single_file(
                     filepath=tmp_path,
                     original_filename=filename,
@@ -399,6 +400,6 @@ def remove_uploaded(name: str) -> int:
         run_all_scanners(workspace_dir()) if memory["files"] else None
     )
 
-    print(f"Removed {removed} file(s) for '{name}' — "
-          f"{len(memory['files'])} remaining")
+    logger.info("removed files=%d for name=%s remaining=%d",
+                removed, name, len(memory["files"]))
     return removed

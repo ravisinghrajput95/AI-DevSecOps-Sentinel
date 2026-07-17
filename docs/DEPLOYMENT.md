@@ -153,6 +153,12 @@ All variables are read from `.env` by docker compose:
 | `SENTINEL_RATE_LIMIT_PER_MIN` | `20` | Per-client `/chat` requests per minute (429 above it, `0` disables) |
 | `SENTINEL_CORS_ORIGINS` | localhost dev origins | Comma-separated allowlist; only needed for split-origin deployments |
 | `SENTINEL_HTTP_PORT` | `80` | Host port the frontend binds |
+| `LOG_LEVEL` | `INFO` | `DEBUG`/`INFO`/`WARNING`/`ERROR` |
+| `LOG_FORMAT` | `json` | `json` (one object/line, for Cloud Logging) or `text` (human-readable) |
+
+Every log line carries a `request_id`; the same id is returned on the
+`X-Request-Id` response header, so a user-reported failure can be traced
+directly to its log lines.
 
 Changing `SENTINEL_API_KEY` requires rebuilding the frontend image
 (`docker compose up --build frontend`) because the key is baked into

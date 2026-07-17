@@ -1,7 +1,10 @@
 import os
 
+from backend.logging_setup import get_logger
 from backend.openai_client import get_client
 from backend.prompt_engine import SYSTEM_PROMPT
+
+logger = get_logger(__name__)
 
 LLM_MODEL = os.environ.get("SENTINEL_LLM_MODEL", "gpt-4o")
 
@@ -62,7 +65,7 @@ def ask_openai(prompt: str, history: list = []) -> str:
         return response.choices[0].message.content
 
     except Exception as e:
-        print("OpenAI error:", e)
+        logger.error("OpenAI call failed: %s", e)
         if "rate_limit" in str(e) or "429" in str(e):
             return (
                 "⚠️ The AI request hit the OpenAI rate limit — the prompt was "
