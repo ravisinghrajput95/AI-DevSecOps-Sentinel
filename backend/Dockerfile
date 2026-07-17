@@ -67,10 +67,12 @@ COPY backend/ backend/
 # named volume inherits that ownership at first mount —
 # otherwise it mounts root-owned and trivy's DB download
 # fails with a permission error.
-RUN useradd --create-home sentinel \
+# Explicit UID/GID: Kubernetes runAsNonRoot can only verify a
+# NUMERIC user — `USER sentinel` fails admission on GKE.
+RUN useradd --create-home --uid 1000 sentinel \
     && mkdir -p /home/sentinel/.cache \
     && chown -R sentinel:sentinel /app /home/sentinel/.cache
-USER sentinel
+USER 1000:1000
 ENV HOME=/home/sentinel
 
 EXPOSE 8000

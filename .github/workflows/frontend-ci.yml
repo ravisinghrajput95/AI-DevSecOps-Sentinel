@@ -17,11 +17,13 @@ on:
     paths:
       - "frontend/**"
       - ".github/workflows/frontend-ci.yml"
+      - "deploy/helm/**"
   pull_request:
     branches: [main]
     paths:
       - "frontend/**"
       - ".github/workflows/frontend-ci.yml"
+      - "deploy/helm/**"
 
 concurrency:
   group: frontend-ci-${{ github.ref }}

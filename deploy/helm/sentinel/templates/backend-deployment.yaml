@@ -27,6 +27,12 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
+        # Numeric UID matching the image's `sentinel` user —
+        # runAsNonRoot cannot verify a named USER. fsGroup makes
+        # the scanner-cache PVC writable by that user.
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
       containers:
