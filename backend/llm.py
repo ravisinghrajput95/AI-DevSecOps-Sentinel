@@ -1,5 +1,7 @@
 import os
+import time
 
+from backend import metrics
 from backend.logging_setup import get_logger
 from backend.openai_client import get_client
 from backend.prompt_engine import SYSTEM_PROMPT
@@ -55,6 +57,7 @@ def ask_openai(prompt: str, history: list = []) -> str:
     # CALL OPENAI
     # =========================================================
 
+    start = time.time()
     try:
         response = get_client().chat.completions.create(
             model=LLM_MODEL,
@@ -62,11 +65,18 @@ def ask_openai(prompt: str, history: list = []) -> str:
             temperature=0.2,
             max_tokens=4096
         )
+        metrics.LLM_LATENCY.observe(time.time() - start)
+        usage = getattr(response, "usage", None)
+        if usage:
+            metrics.LLM_TOKENS.labels(kind="prompt").inc(usage.prompt_tokens or 0)
+            metrics.LLM_TOKENS.labels(kind="completion").inc(usage.completion_tokens or 0)
         return response.choices[0].message.content
 
     except Exception as e:
         logger.error("OpenAI call failed: %s", e)
-        if "rate_limit" in str(e) or "429" in str(e):
+        is_rate = "rate_limit" in str(e) or "429" in str(e)
+        metrics.LLM_ERRORS.labels(reason="rate_limit" if is_rate else "other").inc()
+        if is_rate:
             return (
                 "⚠️ The AI request hit the OpenAI rate limit — the prompt was "
                 "too large or requests came too fast. The verified scanner "

@@ -1,0 +1,22 @@
+{{- if .Values.metrics.podMonitor.enabled }}
+# Prometheus Operator PodMonitor — scrapes the backend pod's
+# :8000/metrics directly (not through the ingress). Requires the
+# Prometheus Operator CRDs to be installed in the cluster.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "sentinel.fullname" . }}-backend
+  labels:
+    {{- include "sentinel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: backend
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.metrics.podMonitor.interval }}
+{{- end }}

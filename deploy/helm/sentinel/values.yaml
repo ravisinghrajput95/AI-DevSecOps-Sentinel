@@ -5,9 +5,18 @@
 #   kubectl create secret generic sentinel-secrets \
 #     --from-literal=OPENAI_API_KEY=sk-... \
 #     --from-literal=SENTINEL_API_KEY=...
+# Optional: add SENTRY_DSN to that same secret to enable error
+# tracking — envFrom loads it automatically, no chart change needed.
 # =========================================================
 
 imageRegistry: us-central1-docker.pkg.dev/project-0c628a24-2e5e-4878-861/sentinel
+
+# Prometheus metrics are always exposed on /metrics (pod port, not
+# ingress). The PodMonitor wires them into a Prometheus Operator.
+metrics:
+  podMonitor:
+    enabled: false # set true when the Prometheus Operator is installed
+    interval: 30s
 
 backend:
   image:
