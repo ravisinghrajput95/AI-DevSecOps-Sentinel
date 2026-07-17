@@ -57,15 +57,25 @@ HTTPS with an auto-renewing Let's Encrypt certificate — **no domain
 purchase required**, using `sslip.io` magic DNS — one-time bootstrap:
 
 ```bash
-# 1. Ingress controller (its own external IP) + cert-manager
+# 1. Ingress controller (its own external IP) + cert-manager.
+#    externalTrafficPolicy=Local preserves the real client IP through
+#    to the backend, so the per-client rate limit keys on real clients
+#    (default Cluster SNATs it to a node IP and the limit breaks).
 helm install ingress-nginx ingress-nginx \
   --repo https://kubernetes.github.io/ingress-nginx \
-  --namespace ingress-nginx --create-namespace
+  --namespace ingress-nginx --create-namespace \
+  --set controller.service.externalTrafficPolicy=Local
 helm install cert-manager cert-manager \
   --repo https://charts.jetstack.io \
-  --namespace cert-manager --create-namespace --set crds.enabled=true
+  --namespace cert-manager --create-namespace --set crds.enabled=true \
+  --set global.leaderElection.namespace=cert-manager
+  # ^ REQUIRED on GKE Autopilot: cert-manager defaults its leader-
+  #   election leases to kube-system, which Autopilot's Warden blocks,
+  #   so cainjector never injects the webhook CA and issuer creation
+  #   fails with "certificate signed by unknown authority".
 
-# 2. Let's Encrypt issuers (staging + prod)
+# 2. Let's Encrypt issuers (staging + prod) — wait for the webhook
+#    CA to inject first (a few seconds after cainjector is Ready)
 kubectl apply -f deploy/cert-manager/cluster-issuer.yaml
 
 # 3. Derive the host from the controller's external IP
@@ -73,10 +83,11 @@ IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 HOST=$(echo "$IP" | tr '.' '-').sslip.io    # e.g. 34-120-0-1.sslip.io
 
-# 4. Enable the ingress on the release (one-time; CI --reuse-values
-#    keeps it thereafter). Frontend Service auto-switches to ClusterIP
+# 4. Enable the ingress on the release. --reset-then-reuse-values so
+#    the new ingress.tls chart defaults merge in while keeping the
+#    deployed image tags. Frontend Service auto-switches to ClusterIP
 #    and the backend proxy-hop count auto-bumps to 2.
-helm upgrade sentinel deploy/helm/sentinel --reuse-values \
+helm upgrade sentinel deploy/helm/sentinel --reset-then-reuse-values \
   --set ingress.enabled=true --set ingress.host="$HOST"
 
 # 5. Wait for the cert (LE HTTP-01, ~1-3 min), then browse https://$HOST
