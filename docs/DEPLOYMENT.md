@@ -1,5 +1,57 @@
 # Deployment
 
+Two supported targets: **GKE** (production, CI-deployed, below) and
+**docker compose** (single VM / local, second half of this doc).
+
+## GKE
+
+Infra lives in [`infra/`](../infra/README.md) (Terraform: Autopilot
+cluster `sentinel` + Artifact Registry in us-central1; WIF/OIDC for
+CI documented there). The app ships as a Helm chart in
+`deploy/helm/sentinel`.
+
+**Flow**: every push to main that touches a stack runs that stack's
+CI → builds and smoke-tests the image → pushes it to Artifact
+Registry (keyless, via Workload Identity Federation) → `helm
+upgrade` setting only that component's image tag, gated on its own
+rollout. Nothing deploys from PRs.
+
+One-time setup (already done):
+
+```bash
+# The backend's secrets — SENTINEL_API_KEY must equal the GitHub
+# Actions secret VITE_SENTINEL_API_KEY baked into the frontend bundle
+kubectl create secret generic sentinel-secrets \
+  --from-literal=OPENAI_API_KEY=sk-... \
+  --from-literal=SENTINEL_API_KEY=...
+gh secret set VITE_SENTINEL_API_KEY --body <same value>
+```
+
+Get the UI address:
+
+```bash
+kubectl get svc sentinel-frontend   # EXTERNAL-IP, port 80
+```
+
+Notes:
+
+- The deploys use `helm upgrade --reuse-values --set <component>.image.tag=<sha>`
+  so each lane preserves the other's deployed tag. Caveat of
+  `--reuse-values`: newly ADDED values keys don't pick up chart
+  defaults on upgrade — when you add a values key, set it explicitly
+  once (or `helm get values sentinel` / apply with `-f`).
+- On the very first deploy the two lanes bootstrap each other: the
+  first lane installs the release with the other component's tag
+  still `latest` (not in the registry), which self-heals when the
+  second lane deploys moments later.
+- The backend runs `replicas: 1, strategy: Recreate` by design —
+  see the comment in `backend-deployment.yaml` before scaling.
+- To rotate SENTINEL_API_KEY: update the K8s secret AND the GitHub
+  secret, then rebuild/redeploy the frontend (key is baked into the
+  JS bundle at build time).
+
+## Docker compose (single VM / local)
+
 Container-based deployment for a single VM or host. The stack is two
 images: the **backend** (FastAPI + all six scanners at pinned
 versions) and the **frontend** (nginx serving the built SPA and

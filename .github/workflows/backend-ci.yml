@@ -32,6 +32,11 @@ concurrency:
   group: backend-ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GAR: us-central1-docker.pkg.dev/project-0c628a24-2e5e-4878-861/sentinel
+  WIF_PROVIDER: projects/861082766890/locations/global/workloadIdentityPools/github-pool/providers/github
+  GCP_SA: github-actions-sa@project-0c628a24-2e5e-4878-861.iam.gserviceaccount.com
+
 jobs:
   # =========================================================
   # TESTS — full suite with all six scanners installed so the
@@ -95,6 +100,9 @@ jobs:
     # Runs on main pushes and manual dispatches — skipped only on
     # PRs, where tests alone gate the merge
     if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      id-token: write # OIDC token for Workload Identity Federation
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
@@ -129,3 +137,60 @@ jobs:
       - name: Show logs on failure
         if: failure()
         run: docker logs backend 2>&1 | tail -50
+
+      - name: Authenticate to Google Cloud (OIDC, keyless)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+
+      - name: Push to Artifact Registry
+        run: |
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+          docker tag sentinel-backend:${{ github.sha }} "$GAR/sentinel-backend:${{ github.sha }}"
+          docker push "$GAR/sentinel-backend:${{ github.sha }}"
+
+  # =========================================================
+  # DEPLOY — helm upgrade setting only THIS component's tag;
+  # --reuse-values keeps the other component's deployed tag.
+  # Gates on the backend rollout only, so a not-yet-deployed
+  # frontend never blocks this lane.
+  # =========================================================
+  deploy:
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Authenticate to Google Cloud (OIDC, keyless)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+
+      - uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395 # v3.0.0
+        with:
+          cluster_name: sentinel
+          location: us-central1
+
+      - name: Deploy backend via helm
+        run: |
+          # Retry: the two CI lanes can deploy concurrently and
+          # helm allows one operation per release at a time
+          for attempt in 1 2 3; do
+            helm upgrade --install sentinel deploy/helm/sentinel \
+              --reuse-values \
+              --set backend.image.tag=${{ github.sha }} \
+              && break
+            echo "helm release busy — retry $attempt"
+            sleep 30
+          done
+          kubectl rollout status deployment/sentinel-backend --timeout=10m
+
+      - name: Show pods on failure
+        if: failure()
+        run: kubectl get pods -o wide && kubectl describe deployment sentinel-backend | tail -20
