@@ -183,3 +183,47 @@ def test_small_file_still_ingested(monkeypatch):
     small = base64.b64encode(b'resource "aws_s3_bucket" "b" {}').decode()
     fh.save_uploaded_files([{"name": "main.tf", "content": small}])
     assert [f["name"] for f in memory["files"]] == ["main.tf"]
+
+
+# =========================================================
+# SCANNER CONTEXT ROLLUP (prompt token budgeting)
+# =========================================================
+
+def make_finding(sev, tool="checkov", rule="CKV_1", title="t", file="a.tf", line=1):
+    return {"severity": sev, "tool": tool, "rule_id": rule,
+            "title": title, "file": file, "line": line,
+            "evidence": "", "guideline": None}
+
+
+def test_small_scans_list_every_finding():
+    from backend.prompt_engine import build_scanner_context
+    memory["scan"] = {
+        "findings": [make_finding("MEDIUM", rule=f"R{i}") for i in range(10)],
+        "tools_run": ["checkov"], "tools_missing": [],
+    }
+    ctx = build_scanner_context()
+    assert ctx.count("[MEDIUM]") == 10
+    assert "×" not in ctx
+
+
+def test_large_scans_roll_up_low_severities():
+    from backend.prompt_engine import build_scanner_context
+    findings = (
+        [make_finding("CRITICAL", tool="gitleaks", rule="aws-key",
+                      file=f"f{i}.tf", line=i) for i in range(4)]
+        + [make_finding("MEDIUM", rule="CKV_K8S_20", title="no privesc",
+                        file=f"m{i}.yaml", line=i) for i in range(147)]
+        + [make_finding("LOW", rule="CKV_LOW", title="minor",
+                        file=f"l{i}.yaml", line=i) for i in range(4)]
+    )
+    memory["scan"] = {"findings": findings,
+                      "tools_run": ["checkov", "gitleaks"], "tools_missing": []}
+    ctx = build_scanner_context()
+
+    # All CRITICALs individually, MEDIUMs grouped to one line
+    assert ctx.count("[CRITICAL]") == 4
+    assert "checkov/CKV_K8S_20 ×147" in ctx
+    assert "checkov/CKV_LOW ×4" in ctx
+    assert "155 verified findings" in ctx
+    # The whole section stays prompt-sized even for huge scans
+    assert len(ctx) < 3000

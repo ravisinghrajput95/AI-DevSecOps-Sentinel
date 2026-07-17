@@ -5,6 +5,11 @@ from backend.prompt_engine import SYSTEM_PROMPT
 
 LLM_MODEL = os.environ.get("SENTINEL_LLM_MODEL", "gpt-4o")
 
+# Old analyses in history can be huge (full repo reports) — cap each
+# item so history (12 messages max) can't push the request over the
+# model's TPM limit: 12 x 2500 chars ~ 7.5k tokens worst case
+MAX_HISTORY_ITEM_CHARS = 2500
+
 
 def ask_openai(prompt: str, history: list = []) -> str:
 
@@ -27,11 +32,11 @@ def ask_openai(prompt: str, history: list = []) -> str:
         if isinstance(item, (list, tuple)) and len(item) == 2:
             messages.append({
                 "role": "user",
-                "content": str(item[0])
+                "content": str(item[0])[:MAX_HISTORY_ITEM_CHARS]
             })
             messages.append({
                 "role": "assistant",
-                "content": str(item[1])
+                "content": str(item[1])[:MAX_HISTORY_ITEM_CHARS]
             })
 
     # =========================================================
@@ -58,4 +63,11 @@ def ask_openai(prompt: str, history: list = []) -> str:
 
     except Exception as e:
         print("OpenAI error:", e)
+        if "rate_limit" in str(e) or "429" in str(e):
+            return (
+                "⚠️ The AI request hit the OpenAI rate limit — the prompt was "
+                "too large or requests came too fast. The verified scanner "
+                "findings above are unaffected. Try again in a minute, or "
+                "narrow the question to specific files."
+            )
         return "An error occurred while contacting the AI. Please try again."

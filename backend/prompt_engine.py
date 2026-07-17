@@ -1,6 +1,14 @@
+import os
+import re
+
 from backend.memory import memory
 from backend.rag import search, build_context
-import re
+
+# Above this many findings, build_scanner_context() groups
+# MEDIUM-and-below by rule instead of listing every occurrence
+SCANNER_ROLLUP_THRESHOLD = 40
+# CRITICAL/HIGH findings listed individually before truncating
+SCANNER_SEVERE_LIMIT = 80
 
 # =========================================================
 # SYSTEM PROMPT
@@ -893,7 +901,10 @@ def build_full_file_context() -> str:
 
     blocks = []
     total_chars = 0
-    char_limit = 60000
+    # ~10k tokens. Sized so the full MODE 3 prompt (system prompt +
+    # scanner findings + RAG + instructions) stays inside low-tier
+    # OpenAI TPM limits (30k tokens/min for gpt-4o).
+    char_limit = int(os.environ.get("SENTINEL_FILE_CONTEXT_CHARS", "40000"))
 
     for f in memory["files"]:
         name = f.get("name", "unknown")
@@ -954,13 +965,51 @@ def build_scanner_context() -> str:
         )
         return "\n".join(lines)
 
-    lines.append(f"{len(findings)} verified findings:")
-    for f in findings:
+    def full_line(f):
         evidence = f" (evidence: {f['evidence']})" if f.get("evidence") else ""
         guideline = f" [guide: {f['guideline']}]" if f.get("guideline") else ""
-        lines.append(
+        return (
             f"[{f['severity']}] {f['tool']}/{f['rule_id']} — "
             f"{f['file']}:{f['line']} — {f['title']}{evidence}{guideline}"
+        )
+
+    # Small scans: every finding listed individually, as before
+    if len(findings) <= SCANNER_ROLLUP_THRESHOLD:
+        lines.append(f"{len(findings)} verified findings:")
+        lines.extend(full_line(f) for f in findings)
+        return "\n".join(lines)
+
+    # Large scans (repo-sized): a 189-finding list alone can blow the
+    # model's TPM limit. CRITICAL/HIGH stay individual; MEDIUM and
+    # below collapse to one line per rule with a count and an example
+    # location — no finding is dropped, low-severity ones are grouped.
+    severe = [f for f in findings if f["severity"] in ("CRITICAL", "HIGH")]
+    rest = [f for f in findings if f["severity"] not in ("CRITICAL", "HIGH")]
+
+    lines.append(
+        f"{len(findings)} verified findings. CRITICAL and HIGH are listed "
+        f"individually; lower severities are grouped by rule with counts — "
+        f"treat each group as covering ALL its occurrences."
+    )
+    lines.extend(full_line(f) for f in severe[:SCANNER_SEVERE_LIMIT])
+    if len(severe) > SCANNER_SEVERE_LIMIT:
+        lines.append(
+            f"...and {len(severe) - SCANNER_SEVERE_LIMIT} more CRITICAL/HIGH "
+            f"findings (ask about specific files to see them)."
+        )
+
+    groups = {}
+    for f in rest:
+        key = (f["severity"], f["tool"], f["rule_id"], f["title"])
+        entry = groups.setdefault(key, {"count": 0, "example": f})
+        entry["count"] += 1
+    for (severity, tool, rule_id, title), entry in sorted(
+        groups.items(), key=lambda kv: -kv[1]["count"]
+    ):
+        ex = entry["example"]
+        lines.append(
+            f"[{severity}] {tool}/{rule_id} ×{entry['count']} — {title} "
+            f"(e.g. {ex['file']}:{ex['line']})"
         )
     return "\n".join(lines)
 
