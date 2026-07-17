@@ -227,3 +227,56 @@ def test_large_scans_roll_up_low_severities():
     assert "155 verified findings" in ctx
     # The whole section stays prompt-sized even for huge scans
     assert len(ctx) < 3000
+
+
+# =========================================================
+# BUG FIXES — client-IP trust, empty message, upload warnings
+# =========================================================
+
+def test_client_key_uses_rightmost_trusted_hop(monkeypatch):
+    # One trusted proxy (default): the client-supplied leftmost value
+    # is ignored, the appended real hop wins — spoofing is defeated
+    monkeypatch.setattr(m, "TRUSTED_PROXY_HOPS", 1)
+
+    class Req:
+        def __init__(self, xff):
+            self.headers = {"x-forwarded-for": xff} if xff else {}
+            self.client = type("C", (), {"host": "10.9.0.1"})()
+
+    # client tries to spoof 1.1.1.1; nginx appends the real peer 8.8.8.8
+    assert m._client_key(Req("1.1.1.1, 8.8.8.8")) == "8.8.8.8"
+    # rotating the spoofed value can't change the bucket
+    assert m._client_key(Req("2.2.2.2, 8.8.8.8")) == "8.8.8.8"
+    # single value (direct, no proxy appended) still works
+    assert m._client_key(Req("8.8.8.8")) == "8.8.8.8"
+    # no header → falls back to the socket peer
+    assert m._client_key(Req(None)) == "10.9.0.1"
+
+
+def test_empty_message_never_calls_llm(client, monkeypatch):
+    called = {"llm": False}
+    import backend.main as mod
+    monkeypatch.setattr(mod, "ask_openai",
+                        lambda *a, **k: called.__setitem__("llm", True) or "x")
+
+    for msg in ["", "   ", "\n\t "]:
+        r = client.post("/chat", json={"message": msg, "history": [], "files": []})
+        assert r.status_code == 200
+        assert "Type a question" in r.json()["response"]
+    assert called["llm"] is False
+
+
+def test_rejected_uploads_surfaced_in_response(client, monkeypatch):
+    import backend.main as mod
+    monkeypatch.setattr(
+        mod, "save_uploaded_files",
+        lambda files: [{"name": "huge.zip", "reason": "80 MB exceeds the 50 MB limit"}],
+    )
+    r = client.post("/chat", json={
+        "message": "hi", "history": [],
+        "files": [{"name": "huge.zip", "content": "x"}],
+    })
+    body = r.json()
+    assert "Some uploads were skipped" in body["response"]
+    assert "huge.zip" in body["response"]
+    assert body["upload_warnings"][0]["name"] == "huge.zip"

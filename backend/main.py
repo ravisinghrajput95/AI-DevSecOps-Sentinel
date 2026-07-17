@@ -120,13 +120,20 @@ app.add_middleware(
 # =========================================================
 # RATE LIMIT — /chat only
 # Every non-canned message is a paid LLM call and a scanner
-# run, so /chat gets a fixed-window per-client limit. Keyed
-# by client IP (first X-Forwarded-For hop when behind the
-# nginx proxy). In-process state matches the app's single-
-# worker architecture. 0 disables the limit.
+# run, so /chat gets a fixed-window per-client limit. In-
+# process state matches the app's single-worker architecture.
+# 0 disables the limit.
 # =========================================================
 
 RATE_LIMIT_PER_MINUTE = int(os.environ.get("SENTINEL_RATE_LIMIT_PER_MIN", "20"))
+
+# Number of trusted reverse proxies in front of the app (our nginx
+# = 1). The client IP is the Nth-from-last X-Forwarded-For hop —
+# everything to the LEFT of that is client-supplied and spoofable,
+# so keying on the leftmost value lets a client rotate the header to
+# get a fresh bucket per request. Never trust more hops than you
+# actually run in front of this.
+TRUSTED_PROXY_HOPS = int(os.environ.get("SENTINEL_TRUSTED_PROXY_HOPS", "1"))
 
 _rate_buckets: dict = {}  # client key -> [window, count]
 
@@ -134,7 +141,12 @@ _rate_buckets: dict = {}  # client key -> [window, count]
 def _client_key(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+        if parts:
+            # Count from the right: our proxies append their peer's
+            # address, so the trusted hop is at -TRUSTED_PROXY_HOPS.
+            idx = min(TRUSTED_PROXY_HOPS, len(parts))
+            return parts[-idx]
     return request.client.host if request.client else "unknown"
 
 
@@ -218,10 +230,49 @@ async def chat(req: ChatRequest):
 
     # =====================================================
     # SAVE FILES
+    # Rejected uploads (too large, unsupported, zip bomb/slip,
+    # empty archive) are surfaced to the user via finish()
+    # instead of failing silently.
     # =====================================================
 
-    if req.files:
-        save_uploaded_files(req.files)
+    upload_warnings = save_uploaded_files(req.files) if req.files else []
+
+    def finish(payload: dict) -> dict:
+        """Prepend any upload rejections to the outgoing response."""
+        if upload_warnings:
+            notes = "\n".join(
+                f"- **{w['name']}** — {w['reason']}" for w in upload_warnings
+            )
+            payload["response"] = (
+                f"⚠️ Some uploads were skipped:\n{notes}\n\n"
+                + payload.get("response", "")
+            )
+            payload["upload_warnings"] = upload_warnings
+        return payload
+
+    # =====================================================
+    # EMPTY MESSAGE
+    # A blank / whitespace-only message must never reach the
+    # paid LLM. If files were just uploaded, invite analysis;
+    # otherwise prompt for input.
+    # =====================================================
+
+    if not user_message:
+        if memory["files"]:
+            return finish({
+                "response": (
+                    f"Got it — {len(memory['files'])} file(s) in context. "
+                    "Ask me to run a security audit, or pick a quick action."
+                ),
+                "findings": (memory.get("scan") or {}).get("findings", []),
+                "scanners": {
+                    "run": (memory.get("scan") or {}).get("tools_run", []),
+                    "missing": (memory.get("scan") or {}).get("tools_missing", []),
+                },
+            })
+        return finish({
+            "response": "Type a question or upload a file to get started.",
+        })
 
     # =====================================================
     # GITHUB URL INGESTION
@@ -294,7 +345,7 @@ async def chat(req: ChatRequest):
             ])
             more = len(memory["files"]) - 3
             suffix = f" and {more} more" if more > 0 else ""
-            return {
+            return finish({
                 "response": (
                     f"Hey! I still have your uploaded files in context "
                     f"({filenames}{suffix}).\n\n"
@@ -305,8 +356,8 @@ async def chat(req: ChatRequest):
                     f"- Docker / Kubernetes hardening\n"
                     f"- Terraform inspection"
                 )
-            }
-        return {
+            })
+        return finish({
             "response": (
                 "Hey! I'm AI DevSecOps Sentinel — your senior DevOps & DevSecOps engineer.\n\n"
                 "I can help you with:\n\n"
@@ -317,7 +368,7 @@ async def chat(req: ChatRequest):
                 "ArgoCD, Helm, observability, and more\n\n"
                 "Upload some files or ask me anything to get started."
             )
-        }
+        })
 
     # =====================================================
     # ACKNOWLEDGEMENT HANDLER
@@ -328,7 +379,7 @@ async def chat(req: ChatRequest):
     if intent == "acknowledgement":
         if memory["files"]:
             file_count = len(memory["files"])
-            return {
+            return finish({
                 "response": (
                     f"Ready when you are! I have {file_count} file(s) in context.\n\n"
                     f"What would you like to dig into next?\n\n"
@@ -338,10 +389,10 @@ async def chat(req: ChatRequest):
                     f"- Docker / Kubernetes hardening\n"
                     f"- Terraform inspection"
                 )
-            }
-        return {
+            })
+        return finish({
             "response": "Ready! What DevOps topic can I help you with?"
-        }
+        })
 
     # =====================================================
     # OFF-TOPIC HANDLER
@@ -350,14 +401,14 @@ async def chat(req: ChatRequest):
     # =====================================================
 
     if intent == "off_topic":
-        return {
+        return finish({
             "response": (
                 "That is outside my area — I am a DevOps and DevSecOps AI assistant. "
                 "I can help with Kubernetes, Docker, Terraform, CI/CD pipelines, "
                 "security audits, and infrastructure file analysis. "
                 "Feel free to ask anything in that space or upload files for a full security review."
             )
-        }
+        })
 
     # =====================================================
     # SMALL TALK HANDLER
@@ -372,19 +423,19 @@ async def chat(req: ChatRequest):
             "you good", "are you ok", "how have you been",
             "how is it going", "hows it going"
         ]):
-            return {
+            return finish({
                 "response": (
                     "Running at full capacity. Ready to audit your infrastructure.\n\n"
                     "Upload a file or ask me a DevOps question to get started."
                 )
-            }
+            })
 
         if any(x in msg for x in [
             "who are you", "what are you", "are you an ai",
             "are you a bot", "are you human", "what is your name",
             "whats your name"
         ]):
-            return {
+            return finish({
                 "response": (
                     "I'm **AI DevSecOps Sentinel** — an AI DevOps and DevSecOps engineer.\n\n"
                     "I specialise in:\n\n"
@@ -394,13 +445,13 @@ async def chat(req: ChatRequest):
                     "- Answering DevOps and DevSecOps questions with real examples and code\n\n"
                     "Upload a file, a `.zip`, or paste a GitHub repo URL to get started."
                 )
-            }
+            })
 
         if any(x in msg for x in [
             "what can you do", "what do you do",
             "your name", "whats your name"
         ]):
-            return {
+            return finish({
                 "response": (
                     "I'm **AI DevSecOps Sentinel**.\n\n"
                     "**With uploaded files I can:**\n\n"
@@ -416,14 +467,14 @@ async def chat(req: ChatRequest):
                     "- Give best practice guidance with real code examples\n\n"
                     "Upload a file or ask me anything."
                 )
-            }
+            })
 
-        return {
+        return finish({
             "response": (
                 "I'm here and ready. What DevOps or DevSecOps topic can I help you with?\n\n"
                 "Upload a file for analysis or ask me anything."
             )
-        }
+        })
 
     # =====================================================
     # CLEAR HANDLER
@@ -459,7 +510,7 @@ async def chat(req: ChatRequest):
     answer = scrub_secrets(ask_openai(prompt, req.history))
 
     scan = memory.get("scan") or {}
-    return {
+    return finish({
         "response": answer,
         "findings": scan.get("findings", []),
         "scanners": {
@@ -467,4 +518,4 @@ async def chat(req: ChatRequest):
             "missing": scan.get("tools_missing", []),
         },
         "repo": ingested_repo,
-    }
+    })
