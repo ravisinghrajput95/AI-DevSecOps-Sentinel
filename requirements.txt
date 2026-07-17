@@ -6,6 +6,8 @@ python-dotenv==1.2.2
 requests==2.34.2
 faiss-cpu==1.14.3
 numpy==2.5.1
+prometheus-client==0.25.0
+sentry-sdk==2.66.0
 
 # dev / test
 pytest==9.1.1

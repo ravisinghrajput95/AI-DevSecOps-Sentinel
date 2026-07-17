@@ -5,15 +5,29 @@ import secrets as pysecrets
 import time
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 
+from backend import metrics
 from backend.logging_setup import configure_logging, get_logger, set_request_id
 
 configure_logging()
 logger = get_logger(__name__)
+
+# Optional error tracking — no-op unless SENTRY_DSN is set, so the
+# dependency is harmless in dev/CI where no DSN exists.
+_SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
+if _SENTRY_DSN:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=_SENTRY_DSN,
+        traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0")),
+        environment=os.environ.get("SENTINEL_ENV", "production"),
+    )
+    logger.info("sentry error tracking enabled")
 
 from backend.session import SESSIONS, activate
 
@@ -44,7 +58,10 @@ from backend.scanners import scanner_status
 
 async def require_api_key(request: Request):
     expected = os.environ.get("SENTINEL_API_KEY", "")
-    if not expected or request.url.path == "/health":
+    # /health and /metrics are unauthenticated: probes and the in-
+    # cluster Prometheus scraper don't carry the app key, and neither
+    # path is exposed through the public ingress.
+    if not expected or request.url.path in ("/health", "/metrics"):
         return
     provided = request.headers.get("X-API-Key", "")
     if not pysecrets.compare_digest(provided, expected):
@@ -107,12 +124,30 @@ async def request_id(request: Request, call_next):
     set_request_id(rid)
     start = time.time()
     response = await call_next(request)
+    elapsed = time.time() - start
     response.headers["X-Request-Id"] = rid
-    if request.url.path != "/health":
+
+    # Metrics — label on the route template (low, fixed cardinality)
+    path = request.url.path
+    if path not in ("/metrics", "/health"):
+        metrics.HTTP_REQUESTS.labels(
+            method=request.method, path=path, status=response.status_code
+        ).inc()
+        metrics.HTTP_LATENCY.labels(method=request.method, path=path).observe(elapsed)
         logger.info("%s %s -> %d in %dms",
-                    request.method, request.url.path, response.status_code,
-                    int((time.time() - start) * 1000))
+                    request.method, path, response.status_code, int(elapsed * 1000))
     return response
+
+
+# =========================================================
+# METRICS ENDPOINT — Prometheus exposition. Scraped on the pod
+# port directly; not routed through the public ingress.
+# =========================================================
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    metrics.ACTIVE_SESSIONS.set(len(SESSIONS))
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 # =========================================================
 # CORS

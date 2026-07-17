@@ -3,6 +3,7 @@ import zipfile
 import shutil
 import base64
 import tempfile
+from backend import metrics
 from backend.logging_setup import get_logger
 from backend.rag import add_document, remove_documents
 from backend.memory import memory
@@ -277,6 +278,22 @@ def save_uploaded_files(files: list, project_name: str = "default"):
 
     def reject(name, reason):
         logger.warning("rejected upload name=%s reason=%s", name, reason)
+        # Bounded label: bucket the free-text reason into a small
+        # fixed set so metric cardinality stays flat.
+        r = reason.lower()
+        if "exceeds" in r:
+            cat = "too_large"
+        elif "empty" in r:
+            cat = "empty"
+        elif "decode" in r:
+            cat = "decode_error"
+        elif "unsupported" in r:
+            cat = "unsupported_type"
+        elif "no supported files" in r:
+            cat = "empty_archive"
+        else:
+            cat = "other"
+        metrics.UPLOADS_REJECTED.labels(reason=cat).inc()
         rejected.append({"name": name, "reason": reason})
 
     for file in files:
@@ -342,6 +359,7 @@ def save_uploaded_files(files: list, project_name: str = "default"):
             # Track as ingested
             already_ingested.add(filename)
             ingested_any = True
+            metrics.FILES_INGESTED.inc()
         except Exception as e:
             reject(filename, str(e))
         finally:

@@ -160,6 +160,22 @@ Every log line carries a `request_id`; the same id is returned on the
 `X-Request-Id` response header, so a user-reported failure can be traced
 directly to its log lines.
 
+### Metrics & error tracking
+
+The backend exposes Prometheus metrics on `/metrics` (pod port only —
+not routed through the ingress, and unauthenticated for in-cluster
+scraping). Metric families (all `sentinel_`-prefixed): HTTP request
+count/latency, per-tool scan duration, findings by severity, LLM
+latency/tokens/errors, active sessions, ingest/rejection counters.
+
+- **Prometheus** — set `metrics.podMonitor.enabled=true` (needs the
+  Prometheus Operator) to scrape the backend pod automatically.
+- **Grafana** — import [`deploy/observability/grafana-dashboard.json`](../deploy/observability/grafana-dashboard.json).
+- **Error tracking (optional)** — add `SENTRY_DSN` to the
+  `sentinel-secrets` Secret; it's picked up via `envFrom` and Sentry
+  initializes automatically (no-op when unset). Tune with
+  `SENTRY_TRACES_SAMPLE_RATE` and `SENTINEL_ENV`.
+
 Changing `SENTINEL_API_KEY` requires rebuilding the frontend image
 (`docker compose up --build frontend`) because the key is baked into
 the JS bundle at build time.

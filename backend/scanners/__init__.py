@@ -6,8 +6,10 @@
 # crashing scanner never breaks ingestion.
 # =========================================================
 
+import time
 from concurrent.futures import ThreadPoolExecutor
 
+from backend import metrics
 from backend.logging_setup import get_logger
 from backend.scanners.base import SEVERITY_ORDER
 
@@ -39,7 +41,10 @@ def scanner_status() -> dict:
 
 
 def _run_one(scanner, workspace_dir):
-    return scanner.TOOL, scanner.scan(workspace_dir)
+    start = time.time()
+    findings = scanner.scan(workspace_dir)
+    metrics.SCAN_DURATION.labels(tool=scanner.TOOL).observe(time.time() - start)
+    return scanner.TOOL, findings
 
 
 def run_all_scanners(workspace_dir: str) -> dict:
@@ -63,12 +68,15 @@ def run_all_scanners(workspace_dir: str) -> dict:
                 tools_run.append(tool)
             except Exception as e:
                 logger.error("scanner %s crashed: %s", scanner.TOOL, e)
+                metrics.SCANNER_ERRORS.labels(tool=scanner.TOOL).inc()
                 # A crashed scanner is a coverage gap — report it as
                 # missing so the UI and the LLM's ground-truth section
                 # surface it instead of silently dropping the tool.
                 tools_missing.append(scanner.TOOL)
 
     findings.sort(key=lambda f: (SEVERITY_ORDER.get(f["severity"], 9), f["file"], f["line"]))
+    for f in findings:
+        metrics.SCAN_FINDINGS.labels(severity=f.get("severity", "UNKNOWN")).inc()
 
     logger.info("scan complete findings=%d ran=%s missing=%s",
                 len(findings), tools_run or "none", tools_missing or "none")
