@@ -1,0 +1,17 @@
+{{- if .Values.backend.cache.enabled }}
+# RWO is safe here: the backend is replicas=1 with strategy
+# Recreate, so no two pods ever need the volume at once.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sentinel.fullname" . }}-scanner-cache
+  labels:
+    {{- include "sentinel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.backend.cache.size }}
+{{- end }}

@@ -1,0 +1,64 @@
+# =========================================================
+# AI DevSecOps Sentinel — chart values
+#
+# Secrets are NEVER set here. Create them out-of-band once:
+#   kubectl create secret generic sentinel-secrets \
+#     --from-literal=OPENAI_API_KEY=sk-... \
+#     --from-literal=SENTINEL_API_KEY=...
+# =========================================================
+
+imageRegistry: us-central1-docker.pkg.dev/project-0c628a24-2e5e-4878-861/sentinel
+
+backend:
+  image:
+    name: sentinel-backend
+    tag: latest # CI overrides with the commit SHA
+  # Name of the pre-created Secret; all its keys become env vars
+  existingSecret: sentinel-secrets
+  env:
+    llmModel: gpt-4o
+    maxRequestMb: "80"
+    rateLimitPerMin: "20"
+  # Scanners (checkov, semgrep, trivy) are the heavy part
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  # PVC for trivy's CVE DB + semgrep rules — without it every
+  # pod restart pays the first-scan download again
+  cache:
+    enabled: true
+    size: 5Gi
+
+frontend:
+  image:
+    name: sentinel-frontend
+    tag: latest # CI overrides with the commit SHA
+  replicas: 1
+  service:
+    # LoadBalancer = public IP without needing a domain.
+    # Switch to ClusterIP when fronting with the Ingress below.
+    type: LoadBalancer
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  proxy:
+    # Must exceed the backend's SENTINEL_MAX_REQUEST_MB
+    clientMaxBodySize: 100m
+    # Repo ingestion + scanners + LLM can take minutes
+    readTimeout: 300s
+
+# Optional — requires a domain pointed at the ingress IP.
+# When enabling, set frontend.service.type=ClusterIP.
+ingress:
+  enabled: false
+  className: gce
+  host: ""
+  annotations: {}

@@ -1,0 +1,25 @@
+AI DevSecOps Sentinel deployed.
+
+1. Secrets — the backend expects Secret "{{ .Values.backend.existingSecret }}"
+   (create it BEFORE the pod can become ready):
+
+   kubectl create secret generic {{ .Values.backend.existingSecret }} \
+     --from-literal=OPENAI_API_KEY=sk-... \
+     --from-literal=SENTINEL_API_KEY=...
+
+{{- if eq .Values.frontend.service.type "LoadBalancer" }}
+
+2. UI — wait for the external IP, then open http://<EXTERNAL-IP>/
+
+   kubectl get svc {{ include "sentinel.fullname" . }}-frontend -w
+{{- end }}
+{{- if .Values.ingress.enabled }}
+
+2. Ingress — point DNS for {{ .Values.ingress.host }} at the ingress IP:
+
+   kubectl get ingress {{ include "sentinel.fullname" . }}
+{{- end }}
+
+3. Health:
+
+   kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
