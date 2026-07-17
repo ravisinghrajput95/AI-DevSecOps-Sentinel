@@ -1,4 +1,7 @@
-{{- if .Values.metrics.podMonitor.enabled }}
+{{- /* nil-safe: a --reuse-values upgrade whose stored values predate
+       the metrics key must not nil-pointer here */ -}}
+{{- $pm := (.Values.metrics | default dict).podMonitor | default dict }}
+{{- if $pm.enabled }}
 # Prometheus Operator PodMonitor — scrapes the backend pod's
 # :8000/metrics directly (not through the ingress). Requires the
 # Prometheus Operator CRDs to be installed in the cluster.
@@ -18,5 +21,5 @@ spec:
   podMetricsEndpoints:
     - port: http
       path: /metrics
-      interval: {{ .Values.metrics.podMonitor.interval }}
+      interval: {{ $pm.interval | default "30s" }}
 {{- end }}
