@@ -1,5 +1,6 @@
 # backend/main.py
 
+import concurrent.futures
 import os
 import secrets as pysecrets
 import time
@@ -29,7 +30,8 @@ if _SENTRY_DSN:
     )
     logger.info("sentry error tracking enabled")
 
-from backend.session import SESSIONS, activate
+from backend import jobs
+from backend.session import SESSIONS, activate, current
 
 from backend.prompt_engine import build_prompt
 from backend.file_handler import (
@@ -43,7 +45,6 @@ from backend.intent_engine import detect_intent
 from backend.github_ingest import (
     ingest_github_repo,
     parse_github_url,
-    strip_github_url,
 )
 from backend.rag import clear_rag
 from backend.redaction import clear_secrets, scrub_secrets
@@ -282,6 +283,74 @@ async def remove_file(req: RemoveFileRequest):
     }
 
 # =========================================================
+# ASYNC REPO INGEST
+# Repo download + full scan is ~40s for a big repo, so it
+# runs as a background job instead of holding the request.
+# The work is fully blocking (download, subprocess scanners,
+# RAG embedding), so it runs on a real worker thread — the
+# event loop stays free and it's independent of the request
+# lifecycle. The session is re-bound inside the thread (its
+# own ContextVar context) so it populates the right state.
+# =========================================================
+
+_INGEST_POOL = concurrent.futures.ThreadPoolExecutor(
+    max_workers=4, thread_name_prefix="ingest"
+)
+
+def _github_summary(ingested: dict) -> dict:
+    scan = memory.get("scan") or {}
+    findings = scan.get("findings", [])
+    counts = {}
+    for f in findings:
+        counts[f["severity"]] = counts.get(f["severity"], 0) + 1
+    breakdown = ", ".join(
+        f"{counts[s]} {s.lower()}"
+        for s in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+        if counts.get(s)
+    ) or "none"
+    return {
+        "response": (
+            f"📦 Ingested **{ingested['name']}** — "
+            f"{ingested['files']} files indexed and scanned.\n\n"
+            f"Verified scanner findings: **{len(findings)}** ({breakdown}).\n\n"
+            f"Ask me anything about the repository, or pick a next step below."
+        ),
+        "findings": findings,
+        "scanners": {
+            "run": scan.get("tools_run", []),
+            "missing": scan.get("tools_missing", []),
+        },
+        "repo": ingested,
+    }
+
+
+def _run_github_ingest(job_id, session_id, owner, repo, branch):
+    # Runs on an _INGEST_POOL thread. Re-bind the session inside this
+    # thread's context so memory, workspace, RAG and redaction all
+    # resolve to the caller's state.
+    try:
+        activate(session_id)
+        jobs.set_phase(job_id, "downloading")
+        ingested = ingest_github_repo(owner, repo, branch)
+        activate(session_id)
+        jobs.set_phase(job_id, "scanning")
+        jobs.finish_job(job_id, _github_summary(ingested))
+    except ValueError as e:
+        jobs.fail_job(job_id, f"Could not ingest the repository: {e}")
+    except Exception:
+        logger.exception("github ingest job failed id=%s", job_id)
+        jobs.fail_job(job_id, "Ingestion failed unexpectedly.")
+
+
+@app.get("/scan-status/{job_id}")
+async def scan_status(job_id: str):
+    job = jobs.get_job(job_id, current().id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return jobs.public_view(job)
+
+
+# =========================================================
 # CHAT ENDPOINT
 # =========================================================
 
@@ -336,52 +405,33 @@ async def chat(req: ChatRequest):
         })
 
     # =====================================================
-    # GITHUB URL INGESTION
-    # A pasted repo URL is downloaded and ingested through
-    # the zip path (workspace + RAG + full scanner run).
-    # Bare URL -> fast canned summary with findings attached;
-    # URL + a question -> ingest, then continue to the LLM.
+    # GITHUB URL INGESTION — async
+    # Download + scan run as a background job so the request
+    # returns immediately with a job_id; the client polls
+    # /scan-status/{job_id} and renders findings when done.
     # =====================================================
 
     github_ref = parse_github_url(user_message)
     ingested_repo = None
     if github_ref:
         owner, repo, branch = github_ref
-        logger.info("github ingest %s/%s%s", owner, repo, f"@{branch}" if branch else "")
-        try:
-            ingested_repo = ingest_github_repo(owner, repo, branch)
-        except ValueError as e:
-            return {"response": f"⚠️ Could not ingest the repository: {e}"}
-
-        remainder = strip_github_url(user_message)
-        if len(remainder.split()) < 3:
-            # Bare URL — summarize without an LLM call
-            scan = memory.get("scan") or {}
-            findings = scan.get("findings", [])
-            counts = {}
-            for f in findings:
-                counts[f["severity"]] = counts.get(f["severity"], 0) + 1
-            breakdown = ", ".join(
-                f"{counts[s]} {s.lower()}"
-                for s in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
-                if counts.get(s)
-            ) or "none"
-            return {
-                "response": (
-                    f"📦 Ingested **{ingested_repo['name']}** — "
-                    f"{ingested_repo['files']} files indexed and scanned.\n\n"
-                    f"Verified scanner findings: **{len(findings)}** ({breakdown}).\n\n"
-                    f"Pick a next step below, or ask me anything about the repository."
-                ),
-                "findings": findings,
-                "scanners": {
-                    "run": scan.get("tools_run", []),
-                    "missing": scan.get("tools_missing", []),
-                },
-                "repo": ingested_repo,
-            }
-        # URL + question — analyse with the freshly ingested context
-        user_message = remainder
+        logger.info("github ingest (async) %s/%s%s",
+                    owner, repo, f"@{branch}" if branch else "")
+        session_id = current().id
+        job_id = jobs.create_job(session_id, "github-ingest")
+        _INGEST_POOL.submit(
+            _run_github_ingest, job_id, session_id, owner, repo, branch
+        )
+        label = f"{owner}/{repo}" + (f"@{branch}" if branch else "")
+        return finish({
+            "response": (
+                f"📦 Ingesting **{label}** — downloading and scanning. "
+                "Large repos take a little while; findings will appear here "
+                "when the scan completes."
+            ),
+            "job_id": job_id,
+            "status": "running",
+        })
 
     # =====================================================
     # INTENT DETECTION

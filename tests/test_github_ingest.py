@@ -129,7 +129,17 @@ def test_ingest_github_repo_size_cap(clean_state, monkeypatch):
 # CHAT FLOW — bare URL returns canned summary + findings
 # =========================================================
 
-def test_chat_with_bare_url_returns_summary(clean_state, monkeypatch):
+def _poll_done(client, job_id, headers=None):
+    import time
+    for _ in range(40):
+        s = client.get(f"/scan-status/{job_id}", headers=headers or {}).json()
+        if s["status"] != "running":
+            return s
+        time.sleep(0.05)
+    raise AssertionError("ingest job never finished")
+
+
+def test_chat_with_bare_url_kicks_off_async_ingest(clean_state, monkeypatch):
     from fastapi.testclient import TestClient
     import backend.github_ingest as gi
     import backend.main as m
@@ -139,18 +149,25 @@ def test_chat_with_bare_url_returns_summary(clean_state, monkeypatch):
         lambda *a, **kw: _FakeResponse(content=_zipball_bytes()),
     )
     client = TestClient(m.app)
-    r = client.post("/chat", json={
+    kickoff = client.post("/chat", json={
         "message": "https://github.com/owner/repo",
         "history": [], "files": [],
     }).json()
 
-    assert "Ingested" in r["response"]
-    assert "owner/repo" in r["response"]
-    assert r["repo"]["zip_name"] == "repo.zip"
-    assert "findings" in r and "scanners" in r
+    # Immediate response is a job handle, not the summary
+    assert kickoff["status"] == "running"
+    assert "Ingesting" in kickoff["response"]
+    job_id = kickoff["job_id"]
+
+    done = _poll_done(client, job_id)
+    assert done["status"] == "done"
+    result = done["result"]
+    assert "Ingested" in result["response"]
+    assert result["repo"]["zip_name"] == "repo.zip"
+    assert "findings" in result and "scanners" in result
 
 
-def test_chat_with_url_and_question_reaches_llm(clean_state, monkeypatch):
+def test_chat_with_url_and_question_ingests_without_calling_llm(clean_state, monkeypatch):
     from unittest.mock import patch
     from fastapi.testclient import TestClient
     import backend.github_ingest as gi
@@ -161,12 +178,15 @@ def test_chat_with_url_and_question_reaches_llm(clean_state, monkeypatch):
         lambda *a, **kw: _FakeResponse(content=_zipball_bytes()),
     )
     client = TestClient(m.app)
+    # A URL with a question now also ingests asynchronously; the LLM is
+    # NOT called during ingest — the user asks after the scan completes.
     with patch.object(m, "ask_openai", return_value="analysis here") as mock_llm:
-        r = client.post("/chat", json={
+        kickoff = client.post("/chat", json={
             "message": "scan https://github.com/owner/repo for misconfigurations",
             "history": [], "files": [],
         }).json()
+        done = _poll_done(client, kickoff["job_id"])
 
-    assert mock_llm.called
-    assert r["response"] == "analysis here"
-    assert r["repo"]["zip_name"] == "repo.zip"
+    assert not mock_llm.called
+    assert done["status"] == "done"
+    assert done["result"]["repo"]["zip_name"] == "repo.zip"

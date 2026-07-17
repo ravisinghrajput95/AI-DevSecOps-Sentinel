@@ -34,6 +34,36 @@ const API_HEADERS = {
 };
 
 // =========================================================
+// ASYNC INGEST POLLING
+// A pasted GitHub URL returns a job_id; the repo download +
+// scan runs server-side. Poll until it finishes and return
+// the final result payload (response, findings, scanners).
+// =========================================================
+
+const PHASE_LABEL = {
+  starting: "starting…",
+  downloading: "downloading the repository…",
+  scanning: "running scanners…",
+  done: "done",
+};
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function pollScanJob(jobId, onPhase) {
+  // ~5 min ceiling at 2s intervals
+  for (let i = 0; i < 150; i++) {
+    await sleep(2000);
+    const r = await fetch(`/scan-status/${jobId}`, { headers: API_HEADERS });
+    if (!r.ok) throw new Error(`Scan status unavailable (${r.status})`);
+    const s = await r.json();
+    if (onPhase) onPhase(s.phase);
+    if (s.status === "done") return s.result;
+    if (s.status === "error") throw new Error(s.error || "Ingestion failed.");
+  }
+  throw new Error("Ingestion timed out.");
+}
+
+// =========================================================
 // FAVICON + TAB TITLE
 // =========================================================
 
@@ -1772,7 +1802,24 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
         body: JSON.stringify({ message: text, history, files: encodedFiles })
       });
       if (!res.ok) throw new Error(`Backend error ${res.status}`);
-      const data = await res.json();
+      let data = await res.json();
+
+      // Async repo ingest: the first response is just a job_id. Show
+      // live progress in the pending bubble, then poll for the result.
+      if (data.job_id && data.status === "running") {
+        const showPhase = (phase) => setMessages(prev => {
+          const u = [...prev];
+          u[u.length - 1] = {
+            role: "assistant",
+            content: `${data.response}\n\n_${PHASE_LABEL[phase] || "working…"}_`,
+            isLoading: true,
+          };
+          return u;
+        });
+        showPhase("starting");
+        data = await pollScanJob(data.job_id, showPhase);
+      }
+
       const answer = data.response || "No response received.";
       setHistory(prev => [...prev, [text, answer]]);
 
