@@ -55,10 +55,20 @@ frontend:
     # Repo ingestion + scanners + LLM can take minutes
     readTimeout: 300s
 
-# Optional — requires a domain pointed at the ingress IP.
-# When enabling, set frontend.service.type=ClusterIP.
+# HTTPS entrypoint via an ingress-nginx controller + cert-manager.
+# When enabling, ALSO set frontend.service.type=ClusterIP (the
+# ingress becomes the public entrypoint; the frontend Service no
+# longer needs its own LoadBalancer). The host is derived from the
+# ingress controller's external IP, e.g. <ip>.sslip.io (no domain
+# purchase required — sslip.io resolves <ip>.sslip.io -> <ip>).
 ingress:
   enabled: false
-  className: gce
-  host: ""
+  className: nginx
+  host: "" # e.g. 34-120-0-1.sslip.io
   annotations: {}
+  tls:
+    enabled: true
+    # cert-manager ClusterIssuer that fulfills the certificate
+    # (see deploy/cert-manager/cluster-issuer.yaml)
+    clusterIssuer: letsencrypt-prod
+    secretName: sentinel-tls

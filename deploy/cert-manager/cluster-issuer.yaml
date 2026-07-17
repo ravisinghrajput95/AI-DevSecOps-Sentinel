@@ -1,0 +1,44 @@
+# =========================================================
+# Let's Encrypt ClusterIssuers for cert-manager.
+#
+# HTTP-01 solved through the ingress-nginx controller: cert-
+# manager provisions a temporary Ingress for the ACME
+# challenge path, so the host must already resolve to the
+# controller's external IP (sslip.io makes that automatic).
+#
+# Apply once, cluster-wide:
+#   kubectl apply -f deploy/cert-manager/cluster-issuer.yaml
+#
+# Use `letsencrypt-staging` first (untrusted cert, but a much
+# higher rate limit) to prove the plumbing, then switch the
+# chart's ingress.tls.clusterIssuer to `letsencrypt-prod`.
+# =========================================================
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: rajputravisingh95@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-staging-account
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: rajputravisingh95@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-account
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx

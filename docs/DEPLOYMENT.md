@@ -50,6 +50,42 @@ Notes:
   secret, then rebuild/redeploy the frontend (key is baked into the
   JS bundle at build time).
 
+### HTTPS / TLS
+
+The default LoadBalancer serves plain HTTP. To put the app behind
+HTTPS with an auto-renewing Let's Encrypt certificate — **no domain
+purchase required**, using `sslip.io` magic DNS — one-time bootstrap:
+
+```bash
+# 1. Ingress controller (its own external IP) + cert-manager
+helm install ingress-nginx ingress-nginx \
+  --repo https://kubernetes.github.io/ingress-nginx \
+  --namespace ingress-nginx --create-namespace
+helm install cert-manager cert-manager \
+  --repo https://charts.jetstack.io \
+  --namespace cert-manager --create-namespace --set crds.enabled=true
+
+# 2. Let's Encrypt issuers (staging + prod)
+kubectl apply -f deploy/cert-manager/cluster-issuer.yaml
+
+# 3. Derive the host from the controller's external IP
+IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+HOST=$(echo "$IP" | tr '.' '-').sslip.io    # e.g. 34-120-0-1.sslip.io
+
+# 4. Enable the ingress on the release (one-time; CI --reuse-values
+#    keeps it thereafter). Frontend Service auto-switches to ClusterIP
+#    and the backend proxy-hop count auto-bumps to 2.
+helm upgrade sentinel deploy/helm/sentinel --reuse-values \
+  --set ingress.enabled=true --set ingress.host="$HOST"
+
+# 5. Wait for the cert (LE HTTP-01, ~1-3 min), then browse https://$HOST
+kubectl get certificate sentinel-tls -w
+```
+
+Switch `ingress.tls.clusterIssuer` to `letsencrypt-staging` first if
+you want to validate the plumbing without spending prod rate limit.
+
 ## Docker compose (single VM / local)
 
 Container-based deployment for a single VM or host. The stack is two
