@@ -60,8 +60,12 @@ def configure_logging():
     if _configured:
         return
 
-    level = os.environ.get("LOG_LEVEL", "INFO").upper()
-    fmt = os.environ.get("LOG_FORMAT", "json").lower()
+    # `or` (not a .get default) so an env var present-but-empty — e.g.
+    # a Helm --reuse-values upgrade whose stored values predate these
+    # keys and render value: "" — falls back instead of crashing on
+    # setLevel("").
+    level = (os.environ.get("LOG_LEVEL") or "INFO").upper()
+    fmt = (os.environ.get("LOG_FORMAT") or "json").lower()
 
     handler = logging.StreamHandler(sys.stdout)
     handler.addFilter(_RequestIdFilter())
