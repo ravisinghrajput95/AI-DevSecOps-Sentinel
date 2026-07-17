@@ -12,9 +12,33 @@ CI documented there). The app ships as a Helm chart in
 
 **Flow**: every push to main that touches a stack runs that stack's
 CI → builds and smoke-tests the image → pushes it to Artifact
-Registry (keyless, via Workload Identity Federation) → `helm
-upgrade` setting only that component's image tag, gated on its own
-rollout. Nothing deploys from PRs.
+Registry (keyless, via Workload Identity Federation) → runs the
+supply-chain gate (SBOM + vuln scan + keyless signature/attestation)
+→ `helm upgrade` setting only that component's image tag, gated on
+its own rollout. Nothing deploys from PRs.
+
+### Supply-chain security
+
+Every image the pipeline publishes goes through
+[`.github/actions/supply-chain`](../.github/actions/supply-chain/action.yml)
+after the push, keyed on the immutable digest:
+
+- **SBOM** — an SPDX-JSON software bill of materials (syft) is
+  generated and uploaded as a build artifact.
+- **Vulnerability scan** — trivy fails the build on *fixable*
+  CRITICAL vulnerabilities (`--ignore-unfixed`), so a critically
+  vulnerable image can never reach `helm upgrade`.
+- **Signing + attestation** — cosign signs the digest and attaches
+  the SBOM as an attestation, keyless via the workflow's own OIDC
+  identity (Sigstore / Fulcio / Rekor) — no signing keys are stored.
+
+Verify a deployed image:
+
+```bash
+cosign verify us-central1-docker.pkg.dev/project-0c628a24-2e5e-4878-861/sentinel/sentinel-backend:<sha> \
+  --certificate-identity-regexp 'https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
 
 One-time setup (already done):
 
