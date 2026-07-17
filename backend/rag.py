@@ -1,8 +1,11 @@
 import numpy as np
 import faiss
 
+from backend.logging_setup import get_logger
 from backend.openai_client import get_client
 from backend.session import current
+
+logger = get_logger(__name__)
 
 EMBEDDING_DIMENSION = 1536
 
@@ -62,8 +65,8 @@ class RagStore:
         # one per file.
         try:
             embeddings = get_embeddings(chunks)
-        except Exception as e:
-            print("Embedding error:", e)
+        except Exception:
+            logger.exception("embedding failed for source=%s", source)
             return
 
         for chunk, embedding in zip(chunks, embeddings):
@@ -182,23 +185,20 @@ class RagStore:
                     seen.add(key)
                     unique_results.append(item)
 
-            # =============================================
-            # DEBUG
-            # =============================================
-
-            print("\n=== RETRIEVAL RESULTS ===")
-            for r in unique_results[:top_k]:
-                print(
-                    f"PROJECT: {r.get('project_id')} | "
-                    f"FILE: {r['source']} | "
-                    f"BOOST: {r.get('boost_score', 0)}"
+            if logger.isEnabledFor(10):  # DEBUG
+                logger.debug(
+                    "retrieval top_k=%d results=%s",
+                    top_k,
+                    [
+                        f"{r['source']}(boost={r.get('boost_score', 0)})"
+                        for r in unique_results[:top_k]
+                    ],
                 )
-            print("==========================\n")
 
             return unique_results[:top_k]
 
-        except Exception as e:
-            print("Search error:", e)
+        except Exception:
+            logger.exception("RAG search failed")
             return []
 
     def remove(self, source=None, project_id=None):
@@ -221,13 +221,13 @@ class RagStore:
         if vectors:
             self.index.add(np.array(vectors).astype("float32"))
 
-        print(f"RAG: removed {before - len(self.documents)} chunks "
-              f"(source={source}, project={project_id})")
+        logger.info("RAG removed %d chunks (source=%s project=%s)",
+                    before - len(self.documents), source, project_id)
 
     def clear(self):
         self.documents = []
         self.index = faiss.IndexFlatL2(EMBEDDING_DIMENSION)
-        print("RAG cleared")
+        logger.info("RAG cleared")
 
 # =========================================================
 # MODULE-LEVEL API — thin wrappers over the ACTIVE session's
@@ -246,7 +246,7 @@ def add_document(
     actual_project = project if project is not None else project_id
 
     if not actual_text:
-        print("add_document: no content provided, skipping.")
+        logger.warning("add_document: no content for source=%s, skipping", source)
         return
 
     current().rag.add(actual_text, source, actual_project, topic)

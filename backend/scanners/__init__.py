@@ -8,7 +8,10 @@
 
 from concurrent.futures import ThreadPoolExecutor
 
+from backend.logging_setup import get_logger
 from backend.scanners.base import SEVERITY_ORDER
+
+logger = get_logger(__name__)
 from backend.scanners import (
     gitleaks_scanner,
     checkov_scanner,
@@ -59,7 +62,7 @@ def run_all_scanners(workspace_dir: str) -> dict:
                 findings.extend(tool_findings)
                 tools_run.append(tool)
             except Exception as e:
-                print(f"Scanner error: {e}")
+                logger.error("scanner %s crashed: %s", scanner.TOOL, e)
                 # A crashed scanner is a coverage gap — report it as
                 # missing so the UI and the LLM's ground-truth section
                 # surface it instead of silently dropping the tool.
@@ -67,8 +70,8 @@ def run_all_scanners(workspace_dir: str) -> dict:
 
     findings.sort(key=lambda f: (SEVERITY_ORDER.get(f["severity"], 9), f["file"], f["line"]))
 
-    print(f"\n=== SCAN COMPLETE: {len(findings)} findings "
-          f"(ran: {tools_run or 'none'}, missing: {tools_missing or 'none'}) ===")
+    logger.info("scan complete findings=%d ran=%s missing=%s",
+                len(findings), tools_run or "none", tools_missing or "none")
 
     return {
         "findings": findings,

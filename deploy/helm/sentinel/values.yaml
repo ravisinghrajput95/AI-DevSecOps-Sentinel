@@ -19,6 +19,8 @@ backend:
     llmModel: gpt-4o
     maxRequestMb: "80"
     rateLimitPerMin: "20"
+    logLevel: INFO
+    logFormat: json # structured JSON logs for Cloud Logging; "text" for humans
   # Scanners (checkov, semgrep, trivy) are the heavy part
   resources:
     requests:

@@ -3,11 +3,17 @@
 import os
 import secrets as pysecrets
 import time
+import uuid
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+from backend.logging_setup import configure_logging, get_logger, set_request_id
+
+configure_logging()
+logger = get_logger(__name__)
 
 from backend.session import SESSIONS, activate
 
@@ -87,6 +93,26 @@ async def limit_request_size(request: Request, call_next):
             },
         )
     return await call_next(request)
+
+
+# =========================================================
+# REQUEST ID — correlation across every log line for a
+# request. Added last so it runs OUTERMOST: the id is bound
+# before anything else logs and echoed on the response.
+# =========================================================
+
+@app.middleware("http")
+async def request_id(request: Request, call_next):
+    rid = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+    set_request_id(rid)
+    start = time.time()
+    response = await call_next(request)
+    response.headers["X-Request-Id"] = rid
+    if request.url.path != "/health":
+        logger.info("%s %s -> %d in %dms",
+                    request.method, request.url.path, response.status_code,
+                    int((time.time() - start) * 1000))
+    return response
 
 # =========================================================
 # CORS
@@ -286,7 +312,7 @@ async def chat(req: ChatRequest):
     ingested_repo = None
     if github_ref:
         owner, repo, branch = github_ref
-        print(f"GITHUB INGEST: {owner}/{repo}" + (f"@{branch}" if branch else ""))
+        logger.info("github ingest %s/%s%s", owner, repo, f"@{branch}" if branch else "")
         try:
             ingested_repo = ingest_github_repo(owner, repo, branch)
         except ValueError as e:
@@ -330,9 +356,8 @@ async def chat(req: ChatRequest):
     # =====================================================
 
     intent = detect_intent(user_message)
-    print(f"MESSAGE: {user_message}")
-    print(f"INTENT:  {intent}")
-    print(f"FILES:   {len(memory['files'])} in memory")
+    logger.info("chat intent=%s files=%d msg_len=%d",
+                intent, len(memory["files"]), len(user_message))
 
     # =====================================================
     # GREETING HANDLER
