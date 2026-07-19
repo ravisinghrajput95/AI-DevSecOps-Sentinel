@@ -96,7 +96,29 @@ _ANALYSIS_TRIGGERS = (
     "audit", "analy", "scan", "review", "inspect", "assess",
     "finding", "secret", "misconfig", "vulnerab", "harden",
     "full report", "security report",
+    # Soft verbs that mean "analyse it" in a file context. Multi-word for
+    # "look" so it can't collide with the "looks good" acknowledgement.
+    "check", "take a look", "have a look", "look at", "look into",
+    "go through", "walk through", "walk me through",
 )
+
+# Bare affirmatives ("yes", "go ahead") carry no command, but after the
+# assistant OFFERS an audit menu they mean "yes, do it". The request layer
+# pairs these with an offer in history to run the analysis instead of
+# re-prompting. Gratitude/reactions ("thanks", "great") are deliberately
+# excluded — they must never kick off a scan.
+_AFFIRMATIVE_CONTINUATIONS = {
+    "yes", "yes please", "yep", "yup", "yeah", "yea", "ya",
+    "sure", "sure thing", "ok", "okay", "k", "alright", "alright then",
+    "go ahead", "go for it", "proceed", "please", "please do",
+    "do it", "yes do it", "sounds good", "lets do it", "let's do it",
+}
+
+
+def is_affirmative_continuation(user_message: str) -> bool:
+    """True for a bare 'yes, go ahead' — used only alongside an offer."""
+    msg = user_message.lower().strip().rstrip("!.,?")
+    return msg in _AFFIRMATIVE_CONTINUATIONS
 
 
 def is_acknowledgement(user_message: str) -> bool:

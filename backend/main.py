@@ -42,7 +42,7 @@ from backend.file_handler import (
 )
 from backend.llm import ask_openai
 from backend.memory import memory
-from backend.intent_engine import detect_intent
+from backend.intent_engine import detect_intent, is_affirmative_continuation
 from backend.github_ingest import (
     ingest_github_repo,
     parse_github_url,
@@ -355,6 +355,27 @@ async def scan_status(job_id: str):
 # CHAT ENDPOINT
 # =========================================================
 
+# Text only the greeting / acknowledgement OFFER menus contain — a findings
+# response never does. Used to tell "yes" (do the audit you just offered)
+# apart from "yes" (bare acknowledgement of a result).
+_OFFER_MARKERS = (
+    "would you like to dig into",
+    "would you like to explore",
+    "ready when you are",
+)
+
+
+def _last_assistant_offered(history) -> bool:
+    """True if the previous assistant turn offered an audit menu."""
+    if not history:
+        return False
+    last = history[-1]
+    if isinstance(last, (list, tuple)) and len(last) == 2:
+        txt = str(last[1]).lower()
+        return any(m in txt for m in _OFFER_MARKERS)
+    return False
+
+
 @app.post("/chat", dependencies=[Depends(rate_limit_chat)])
 async def chat(req: ChatRequest):
     user_message = req.message.strip()
@@ -523,22 +544,35 @@ async def chat(req: ChatRequest):
     # =====================================================
 
     if intent == "acknowledgement":
-        if memory["files"]:
-            file_count = len(memory["files"])
+        # A bare affirmative ("yes", "go ahead") right after we OFFERED an
+        # audit menu means "yes, run it" — fall through to analysis instead
+        # of re-prompting with the same menu. Otherwise answer as a normal
+        # acknowledgement (and never trigger analysis).
+        affirm_after_offer = (
+            bool(memory["files"])
+            and is_affirmative_continuation(user_message)
+            and _last_assistant_offered(req.history)
+        )
+        if not affirm_after_offer:
+            if memory["files"]:
+                file_count = len(memory["files"])
+                return finish({
+                    "response": (
+                        f"Ready when you are! I have {file_count} file(s) in context.\n\n"
+                        f"What would you like to dig into next?\n\n"
+                        f"- Security audit\n"
+                        f"- Misconfiguration review\n"
+                        f"- CI/CD analysis\n"
+                        f"- Docker / Kubernetes hardening\n"
+                        f"- Terraform inspection"
+                    )
+                })
             return finish({
-                "response": (
-                    f"Ready when you are! I have {file_count} file(s) in context.\n\n"
-                    f"What would you like to dig into next?\n\n"
-                    f"- Security audit\n"
-                    f"- Misconfiguration review\n"
-                    f"- CI/CD analysis\n"
-                    f"- Docker / Kubernetes hardening\n"
-                    f"- Terraform inspection"
-                )
+                "response": "Ready! What DevOps topic can I help you with?"
             })
-        return finish({
-            "response": "Ready! What DevOps topic can I help you with?"
-        })
+        # The user affirmed the offered audit — analyse as if they'd asked
+        # for one outright, so build_prompt routes to file analysis.
+        user_message = "Run a full security audit of the uploaded files."
 
     # =====================================================
     # OFF-TOPIC HANDLER

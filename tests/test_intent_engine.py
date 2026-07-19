@@ -34,6 +34,16 @@ from backend.intent_engine import detect_intent, is_off_topic
     ("go ahead review this", "chat"),
     ("ok analyse", "chat"),
     ("yes run the security review", "chat"),
+    # Soft verbs ("check", "take a look") also mean analyse, even with an
+    # ack prefix — must not be swallowed as acknowledgements
+    ("sure, check it", "chat"),
+    ("go ahead and check it", "chat"),
+    ("take a look", "chat"),
+    ("have a look at it", "chat"),
+    ("walk me through it", "chat"),
+    # "looks good" must STAY an acknowledgement (not caught by "look")
+    ("looks good", "acknowledgement"),
+    ("looks great", "acknowledgement"),
     # Off-topic
     ("who is virat kohli", "off_topic"),
     ("capital of France", "off_topic"),
@@ -49,6 +59,18 @@ from backend.intent_engine import detect_intent, is_off_topic
 ])
 def test_detect_intent(message, expected):
     assert detect_intent(message) == expected
+
+
+@pytest.mark.parametrize("message,expected", [
+    ("yes", True), ("yes please", True), ("sure", True), ("go ahead", True),
+    ("ok", True), ("yeah", True), ("proceed", True), ("do it", True),
+    # gratitude / reactions are NOT affirmative continuations
+    ("thanks", False), ("great", False), ("perfect", False), ("cool", False),
+    ("no thanks", False), ("looks good", False),
+])
+def test_is_affirmative_continuation(message, expected):
+    from backend.intent_engine import is_affirmative_continuation
+    assert is_affirmative_continuation(message) is expected
 
 
 def test_devops_terms_match_word_boundaries():
