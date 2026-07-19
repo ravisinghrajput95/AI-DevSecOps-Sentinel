@@ -221,6 +221,33 @@ jobs:
           KEY=$(kubectl get secret sentinel-secrets -o jsonpath='{.data.SENTINEL_API_KEY}' | base64 --decode)
           python3 deploy/smoke_test.py "https://$HOST" "$KEY"
 
+      - name: Setup Node for e2e
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+
+      - name: Post-deploy e2e (Playwright, real browser)
+        # Drives the LIVE UI through the ingress in headless Chromium —
+        # the true end-to-end gate. Backend changes (greeting, routing,
+        # findings, the generated-example note) are all UI-visible, so the
+        # backend lane runs it too. Deployed frontend bakes in its API key,
+        # so no secret is needed. Makes a few LLM calls; serial per IP.
+        run: |
+          HOST=$(kubectl get ingress sentinel -o jsonpath='{.spec.rules[0].host}' 2>/dev/null || true)
+          if [ -z "$HOST" ]; then echo "no ingress host — skipping e2e"; exit 0; fi
+          cd e2e
+          npm ci
+          npx playwright install --with-deps chromium
+          BASE_URL="https://$HOST" npx playwright test
+
+      - name: Upload e2e report on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report-backend
+          path: e2e/playwright-report/
+          retention-days: 7
+
       - name: Show pods on failure
         if: failure()
         run: kubectl get pods -o wide && kubectl describe deployment sentinel-backend | tail -20
