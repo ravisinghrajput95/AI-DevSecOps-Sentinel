@@ -280,3 +280,41 @@ def test_rejected_uploads_surfaced_in_response(client, monkeypatch):
     assert "Some uploads were skipped" in body["response"]
     assert "huge.zip" in body["response"]
     assert body["upload_warnings"][0]["name"] == "huge.zip"
+
+
+# =========================================================
+# ZIP MEMBER COUNT EXCLUDES IGNORED DIRS (issue #2)
+# =========================================================
+
+def test_zip_member_count_excludes_node_modules(tmp_path, monkeypatch):
+    monkeypatch.setattr(fh, "MAX_ZIP_MEMBERS", 100)
+    # 5000 node_modules files + 10 real files -> must NOT trip the guard
+    entries = [(f"repo/node_modules/pkg{i}/index.js", b"x") for i in range(5000)]
+    entries += [(f"repo/src/f{i}.tf", b'resource "a" "b" {}') for i in range(10)]
+    z = make_zip(entries)
+    fh.safe_extract(z, str(tmp_path))  # no raise
+    # a real explosion of source files still trips it
+    z2 = make_zip([(f"repo/src/f{i}.tf", b"x") for i in range(101)])
+    with pytest.raises(ValueError, match="relevant entries"):
+        fh.safe_extract(z2, str(tmp_path / "b"))
+
+
+# =========================================================
+# CONTENT-AWARE DEDUP (issue #8)
+# =========================================================
+
+def test_changed_file_replaces_stale_same_named(monkeypatch):
+    monkeypatch.setattr(fh, "run_all_scanners", lambda _: {
+        "findings": [], "tools_run": [], "tools_missing": []})
+    monkeypatch.setattr(fh, "add_document", lambda **k: None)
+    monkeypatch.setattr(fh, "remove_documents", lambda **k: None)
+
+    fh.save_uploaded_files([{"name": "main.tf", "content": base64.b64encode(b'old = 1').decode()}])
+    assert [f["content"] for f in memory["files"]] == ["old = 1"]
+    # identical re-upload -> still one entry, unchanged
+    fh.save_uploaded_files([{"name": "main.tf", "content": base64.b64encode(b'old = 1').decode()}])
+    assert len([f for f in memory["files"] if f["name"] == "main.tf"]) == 1
+    # changed content, same name -> replaced (recognised, not skipped)
+    fh.save_uploaded_files([{"name": "main.tf", "content": base64.b64encode(b'new = 2').decode()}])
+    tf = [f for f in memory["files"] if f["name"] == "main.tf"]
+    assert len(tf) == 1 and tf[0]["content"] == "new = 2"

@@ -427,31 +427,99 @@ function useSessionPersistence(messages, uploadedFiles, history, repoCtx) {
 // Works entirely client-side — no backend needed.
 // =========================================================
 
-function generateMarkdownReport(blocks, repoCtx, uploadedFiles) {
+function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun) {
   const now = new Date().toISOString().split("T")[0];
-  const repoName = repoCtx?.repoName || uploadedFiles[0]?.name || "Project";
+  const isRepo = !!repo;
+  const projectName = repo?.name || repoCtx?.repoName || uploadedFiles[0]?.name || "Project";
+  const findings = scannerFindings || [];
   const lines = [];
 
+  // Real scanned-file count: repo file count, else unique files in the
+  // findings, else the uploaded file count (never the parsed-block count).
+  const filesFromFindings = new Set(findings.map(f => f.file).filter(Boolean)).size;
+  const fileCount = repo?.files ?? (uploadedFiles?.length || filesFromFindings || 0);
+
+  // Ground-truth severity counts from the verified scanner findings.
+  const SEV = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
+  const sevCount = Object.fromEntries(SEV.map(s => [s, 0]));
+  const byTool = {};
+  for (const f of findings) {
+    const s = (f.severity || "INFO").toUpperCase();
+    sevCount[s] = (sevCount[s] || 0) + 1;
+    (byTool[f.tool] = byTool[f.tool] || []).push(f);
+  }
+  const total = findings.length;
+  const riskLevel = sevCount.CRITICAL > 0 ? "CRITICAL"
+    : sevCount.HIGH > 0 ? "HIGH"
+    : sevCount.MEDIUM > 0 ? "MEDIUM"
+    : total > 0 ? "LOW" : "MINIMAL";
+
   lines.push(`# AI DevSecOps Sentinel — Security Report`);
-  lines.push(`**Repository:** ${repoName}`);
-  lines.push(`**Generated:** ${now}`);
-  lines.push(`**Files Scanned:** ${repoCtx?.fileCount || 0}`);
+  lines.push(``);
+  lines.push(`| | |`);
+  lines.push(`|---|---|`);
+  lines.push(`| **${isRepo ? "Repository" : "Project"}** | ${projectName} |`);
+  lines.push(`| **Generated** | ${now} |`);
+  lines.push(`| **${isRepo ? "Files indexed & scanned" : "Files scanned"}** | ${fileCount} |`);
+  lines.push(`| **Scanners run** | ${(scannersRun || Object.keys(byTool)).join(", ") || "—"} |`);
+  lines.push(`| **Total verified findings** | ${total} |`);
+  lines.push(`| **Overall risk** | ${riskLevel} |`);
   lines.push(``);
 
-  if (repoCtx?.counts) {
-    const c = repoCtx.counts;
-    lines.push(`## Risk Summary`);
-    lines.push(`| Severity | Count |`);
-    lines.push(`|----------|-------|`);
-    lines.push(`| 🔴 Critical | ${c.CRITICAL} |`);
-    lines.push(`| 🟠 High | ${c.HIGH} |`);
-    lines.push(`| 🟡 Medium | ${c.MEDIUM} |`);
-    lines.push(`| 🔵 Low | ${c.LOW} |`);
-    if (c.SECRETS > 0) lines.push(`| 🔑 Secrets | ${c.SECRETS} |`);
+  // Executive summary — the part stakeholders actually read.
+  lines.push(`## Executive Summary`);
+  if (total === 0) {
+    lines.push(`No verified findings were produced by the deterministic scanners for ${projectName}. This does not guarantee the absence of risk — see the analyst notes below.`);
+  } else {
+    const headline = [];
+    if (sevCount.CRITICAL) headline.push(`**${sevCount.CRITICAL} critical**`);
+    if (sevCount.HIGH) headline.push(`**${sevCount.HIGH} high**`);
+    if (sevCount.MEDIUM) headline.push(`${sevCount.MEDIUM} medium`);
+    if (sevCount.LOW) headline.push(`${sevCount.LOW} low`);
+    lines.push(`Analysis of **${projectName}** (${fileCount} file${fileCount === 1 ? "" : "s"}) produced **${total} verified findings** — ${headline.join(", ")}. Overall risk is assessed as **${riskLevel}**. Findings below are tool-verified ground truth; the analyst notes add exploitability, blast radius, and remediation context.`);
+    if (sevCount.CRITICAL || sevCount.HIGH) {
+      const top = findings.filter(f => ["CRITICAL", "HIGH"].includes((f.severity || "").toUpperCase())).slice(0, 5);
+      lines.push(``);
+      lines.push(`**Top priorities:**`);
+      for (const f of top) lines.push(`- **[${(f.severity || "").toUpperCase()}]** ${f.title} — \`${f.file}:${f.line}\` (${f.tool})`);
+    }
+  }
+  lines.push(``);
+
+  // Risk summary table
+  lines.push(`## Risk Summary`);
+  lines.push(`| Severity | Count |`);
+  lines.push(`|----------|-------|`);
+  lines.push(`| 🔴 Critical | ${sevCount.CRITICAL} |`);
+  lines.push(`| 🟠 High | ${sevCount.HIGH} |`);
+  lines.push(`| 🟡 Medium | ${sevCount.MEDIUM} |`);
+  lines.push(`| 🔵 Low | ${sevCount.LOW} |`);
+  lines.push(`| **Total** | **${total}** |`);
+  lines.push(``);
+
+  // Full verified findings, grouped by tool — comprehensive ground truth.
+  if (total > 0) {
+    lines.push(`## Verified Scanner Findings`);
+    lines.push(`Deterministic tool output — every finding is reproducible, not AI-inferred.`);
     lines.push(``);
+    for (const tool of Object.keys(byTool).sort()) {
+      const fs = byTool[tool];
+      lines.push(`### ${tool} (${fs.length})`);
+      lines.push(`| Severity | Location | Rule | Finding |`);
+      lines.push(`|----------|----------|------|---------|`);
+      for (const f of fs) {
+        const ev = f.evidence ? ` — \`${String(f.evidence).replace(/\|/g, "\\|")}\`` : "";
+        lines.push(`| ${(f.severity || "INFO").toUpperCase()} | \`${f.file}:${f.line}\` | ${f.rule_id || ""} | ${String(f.title || "").replace(/\|/g, "\\|")}${ev} |`);
+      }
+      lines.push(``);
+    }
   }
 
   const fileBlocks = (blocks || []).filter(b => b.type === "file_analysis");
+  if (fileBlocks.length) {
+    lines.push(`## Analyst Notes — Detailed Analysis`);
+    lines.push(``);
+  }
 
   for (const block of fileBlocks) {
     lines.push(`## File: \`${block.filename}\``);
@@ -505,8 +573,8 @@ function generateMarkdownReport(blocks, repoCtx, uploadedFiles) {
   return lines.join("\n");
 }
 
-function downloadReport(blocks, repoCtx, uploadedFiles) {
-  const md = generateMarkdownReport(blocks, repoCtx, uploadedFiles);
+function downloadReport(blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun) {
+  const md = generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun);
   const blob = new Blob([md], { type: "text/markdown" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -1103,11 +1171,11 @@ function FollowUpSuggestions({ blocks, onSend }) {
 // Additive — does not change any existing component.
 // =========================================================
 
-function DownloadReportButton({ blocks, repoCtx, uploadedFiles }) {
+function DownloadReportButton({ blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun }) {
   const [downloaded, setDownloaded] = useState(false);
 
   const handleDownload = () => {
-    downloadReport(blocks, repoCtx, uploadedFiles);
+    downloadReport(blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun);
     setDownloaded(true);
     setTimeout(() => setDownloaded(false), 3000);
   };
@@ -1344,6 +1412,7 @@ const SEVERITY_COLORS = {
 
 function ScannerFindingsPanel({ findings, scannersRun }) {
   const [open, setOpen] = useState(false);
+  const [tool, setTool] = useState(null); // null = All (consolidated)
   if (!findings?.length) return null;
 
   const counts = {};
@@ -1352,6 +1421,26 @@ function ScannerFindingsPanel({ findings, scannersRun }) {
     counts[sev] = (counts[sev] || 0) + 1;
   }
 
+  // Per-tool finding counts, in the order tools ran (fallback: discovered)
+  const toolCounts = {};
+  for (const f of findings) toolCounts[f.tool] = (toolCounts[f.tool] || 0) + 1;
+  const toolsWithFindings = (scannersRun || []).filter(t => toolCounts[t]);
+  for (const t of Object.keys(toolCounts)) {
+    if (!toolsWithFindings.includes(t)) toolsWithFindings.push(t);
+  }
+
+  const shown = tool ? findings.filter(f => f.tool === tool) : findings;
+
+  const chip = (label, count, active, onClick) => (
+    <button key={label} onClick={(e) => { e.stopPropagation(); setOpen(true); onClick(); }}
+      style={{ background: active ? "#1f6feb22" : "#0d1117",
+        border: `1px solid ${active ? "#1f6feb" : "#30363d"}`, borderRadius: "5px",
+        padding: "2px 8px", fontSize: "10px", cursor: "pointer",
+        color: active ? "#79c0ff" : "#8b949e", fontFamily: "monospace" }}>
+      {label}{count != null ? ` ${count}` : ""}
+    </button>
+  );
+
   return (
     <div style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: "10px", marginBottom: "12px", overflow: "hidden" }}>
       <button onClick={() => setOpen(o => !o)} style={{ width: "100%", display: "flex", alignItems: "center", gap: "7px", padding: "10px 14px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left", borderBottom: open ? "1px solid #30363d" : "none" }}>
@@ -1359,9 +1448,6 @@ function ScannerFindingsPanel({ findings, scannersRun }) {
         <span style={{ color: "#e6edf3", fontSize: "12px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.6px" }}>
           Verified Scanner Findings ({findings.length})
         </span>
-        {(scannersRun || []).map(t => (
-          <span key={t} style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: "4px", padding: "1px 7px", fontSize: "10px", color: "#8b949e", fontFamily: "monospace" }}>{t}</span>
-        ))}
         <span style={{ flex: 1 }} />
         {Object.entries(SEVERITY_COLORS).map(([sev, color]) =>
           counts[sev] ? (
@@ -1373,11 +1459,16 @@ function ScannerFindingsPanel({ findings, scannersRun }) {
         <ChevronIcon open={open} />
       </button>
       {open && (
-        <div style={{ padding: "8px 10px", maxHeight: "320px", overflowY: "auto" }}>
-          {findings.map((f, i) => {
+        <>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", padding: "9px 12px", borderBottom: "1px solid #30363d" }}>
+            {chip("All", findings.length, tool === null, () => setTool(null))}
+            {toolsWithFindings.map(t => chip(t, toolCounts[t], tool === t, () => setTool(t)))}
+          </div>
+          <div style={{ padding: "8px 10px", maxHeight: "320px", overflowY: "auto" }}>
+          {shown.map((f, i) => {
             const color = SEVERITY_COLORS[f.severity?.toUpperCase()] || SEVERITY_COLORS.INFO;
             return (
-              <div key={i} style={{ display: "flex", gap: "8px", alignItems: "baseline", padding: "6px 6px", borderBottom: i < findings.length - 1 ? "1px solid #21262d" : "none", flexWrap: "wrap" }}>
+              <div key={i} style={{ display: "flex", gap: "8px", alignItems: "baseline", padding: "6px 6px", borderBottom: i < shown.length - 1 ? "1px solid #21262d" : "none", flexWrap: "wrap" }}>
                 <span style={{ background: `${color}1f`, border: `1px solid ${color}55`, borderRadius: "4px", padding: "1px 6px", fontSize: "9px", color, fontWeight: "700", flexShrink: 0 }}>{f.severity}</span>
                 <span style={{ fontSize: "10px", color: "#8b949e", fontFamily: "monospace", flexShrink: 0 }}>{f.tool}/{f.rule_id}</span>
                 <span style={{ fontSize: "11px", color: "#79c0ff", fontFamily: "monospace", flexShrink: 0 }}>{f.file}:{f.line}</span>
@@ -1388,7 +1479,8 @@ function ScannerFindingsPanel({ findings, scannersRun }) {
               </div>
             );
           })}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1484,7 +1576,7 @@ function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatest
                 : <MarkdownBlock key={i} text={block.content} />
             )}
             {onSend && <FollowUpSuggestions blocks={parsed} onSend={onSend} />}
-            {onSend && <DownloadReportButton blocks={parsed} repoCtx={repoCtx} uploadedFiles={uploadedFiles || []} />}
+            {onSend && <DownloadReportButton blocks={parsed} repoCtx={repoCtx} uploadedFiles={uploadedFiles || []} scannerFindings={scannerFindings} repo={repo} scannersRun={scannersRun} />}
           </div>
         ) : (
           <div>

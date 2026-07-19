@@ -41,8 +41,20 @@ def clear_workspace():
 # =========================================================
 MAX_FILE_BYTES = 5 * 1024 * 1024               # single non-zip upload
 MAX_ZIP_BYTES = 50 * 1024 * 1024               # uploaded zip archive
-MAX_ZIP_MEMBERS = 2000                          # entries per archive
+MAX_ZIP_MEMBERS = 20000                         # relevant entries per archive
 MAX_ZIP_UNCOMPRESSED_BYTES = 200 * 1024 * 1024  # total expanded size
+
+# Dirs skipped during ingest — also excluded from the zip member count
+# so a real repo's node_modules/.git (easily 10k+ files) doesn't trip
+# the bomb guard. Keep in sync with the walk filter in ingest_zip.
+IGNORED_DIRS = frozenset({
+    ".git", "node_modules", "target", "build",
+    "__pycache__", ".idea", ".terraform", "dist", "vendor", ".venv",
+})
+
+
+def _is_ignored(path: str) -> bool:
+    return any(part in IGNORED_DIRS for part in path.split("/"))
 
 SUPPORTED_EXTENSIONS = [
     ".py", ".java", ".js", ".ts",
@@ -88,10 +100,13 @@ def safe_extract(zip_ref, extract_path):
     infos = zip_ref.infolist()
 
     # Zip-bomb guards — checked against the archive's declared
-    # sizes BEFORE anything touches the disk.
-    if len(infos) > MAX_ZIP_MEMBERS:
+    # sizes BEFORE anything touches the disk. Count only entries that
+    # will actually be ingested (skip node_modules/.git/etc), so a real
+    # repo isn't rejected for its dependency tree.
+    relevant = [i for i in infos if not _is_ignored(i.filename)]
+    if len(relevant) > MAX_ZIP_MEMBERS:
         raise ValueError(
-            f"archive contains {len(infos)} entries — "
+            f"archive contains {len(relevant)} relevant entries — "
             f"the limit is {MAX_ZIP_MEMBERS}"
         )
     total_uncompressed = sum(i.file_size for i in infos)
@@ -144,13 +159,7 @@ def ingest_zip(zip_path):
     indexed_files = []
 
     for root, dirs, files in os.walk(extract_path):
-        dirs[:] = [
-            d for d in dirs
-            if d not in [
-                ".git", "node_modules", "target",
-                "build", "__pycache__", ".idea", ".terraform"
-            ]
-        ]
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
 
         for file in files:
             filepath = os.path.join(root, file)
@@ -305,11 +314,6 @@ def save_uploaded_files(files: list, project_name: str = "default"):
         filename = file.get("name", "unknown")
         b64_content = file.get("content", "")
 
-        # DEDUPLICATION — skip if already in memory (not a rejection)
-        if filename in already_ingested:
-            logger.debug("already ingested, skipping: %s", filename)
-            continue
-
         if not b64_content:
             reject(filename, "file was empty")
             continue
@@ -322,7 +326,8 @@ def save_uploaded_files(files: list, project_name: str = "default"):
 
         # Per-file size cap — zips get a higher allowance than
         # plain files since they carry whole projects.
-        limit = MAX_ZIP_BYTES if filename.lower().endswith(".zip") else MAX_FILE_BYTES
+        is_zip = filename.lower().endswith(".zip")
+        limit = MAX_ZIP_BYTES if is_zip else MAX_FILE_BYTES
         if len(raw_bytes) > limit:
             reject(
                 filename,
@@ -330,6 +335,28 @@ def save_uploaded_files(files: list, project_name: str = "default"):
                 f"{limit // (1024 * 1024)} MB limit",
             )
             continue
+
+        # CONTENT-AWARE DEDUP (single files). Skip only an IDENTICAL
+        # re-upload; a same-named file with changed content REPLACES the
+        # stale entry — otherwise a genuinely new file whose name
+        # collides with a prior scan's file (e.g. main.tf) is silently
+        # dropped and looks "unrecognised".
+        if not is_zip and filename in already_ingested:
+            new_text = raw_bytes.decode("utf-8", "ignore")[:20000]
+            existing = next(
+                (f for f in memory["files"] if f.get("name") == filename), None
+            )
+            if existing is not None and existing.get("content", "") == new_text:
+                logger.debug("identical re-upload, skipping: %s", filename)
+                continue
+            memory["files"] = [
+                f for f in memory["files"] if f.get("name") != filename
+            ]
+            remove_documents(source=filename)
+            old_path = os.path.join(workspace_dir(), os.path.basename(filename))
+            if os.path.isfile(old_path):
+                os.remove(old_path)
+            logger.info("replacing changed file: %s", filename)
 
         suffix = os.path.splitext(filename)[1] or ".tmp"
 

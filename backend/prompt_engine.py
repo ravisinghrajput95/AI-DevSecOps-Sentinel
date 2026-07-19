@@ -567,6 +567,41 @@ GENERAL_MODE_STARTERS = [
 # =========================================================
 # ROUTING — GENERAL vs FILE MODE
 # =========================================================
+# =========================================================
+# GENERATION REQUEST — "write/rewrite me a <artifact>"
+# =========================================================
+_GEN_VERBS = (
+    "write", "generate", "create", "rewrite", "re-write", "produce",
+    "give me", "share", "provide", "make me", "draft", "build me",
+    "can you write", "could you write", "show me a", "show me an",
+)
+_GEN_ARTIFACTS = (
+    "dockerfile", "docker file", "docker-compose", "compose file",
+    "manifest", "terraform", ".tf", "helm chart", "values.yaml",
+    "pipeline", "workflow", "jenkinsfile", "deployment", "k8s",
+    "kubernetes yaml", "yaml file", "config file", "example",
+)
+_GEN_HINTS = (
+    "non-vulnerable", "non vulnerable", "not vulnerable", "secure version",
+    "secure ", "fixed version", "fixed ", "updated version", "hardened",
+    "corrected", "equivalent", "without vulnerabilities", "best practice",
+    "production-ready", "production ready", "template", "example",
+)
+
+
+def is_generation_request(user_message: str) -> bool:
+    """
+    True when the user wants an artifact WRITTEN, not audited — so the
+    turn produces the file instead of re-emitting the previous scan.
+    """
+    msg = user_message.lower()
+    return (
+        any(v in msg for v in _GEN_VERBS)
+        and any(a in msg for a in _GEN_ARTIFACTS)
+        and any(h in msg for h in _GEN_HINTS)
+    )
+
+
 def is_general_question(user_message: str) -> bool:
     msg = user_message.lower().strip().rstrip("?! ")
     # ── INLINE KNOWLEDGE CHECK ────────────────────────────
@@ -608,8 +643,12 @@ def is_general_question(user_message: str) -> bool:
         _knowledge_starts = (
             "what is ", "what are ", "what was ", "what were ",
             "what's the ", "whats the ",
-            "how does ", "how do ", "how can ", "how should ",
-            "how to ",
+            "how does ", "how do ", "how do i ", "how can ", "how can i ",
+            "how should ", "how to ",
+            "do you know ", "do you know what ", "have you heard ",
+            "i want to start ", "i want to get started ", "i want to use ",
+            "i want to try ", "i'd like to ", "i would like to ",
+            "get started with ", "getting started with ",
             "explain ", "describe ", "define ",
             "tell me about ", "tell me how ",
             "help me understand ", "help me learn ",
@@ -1039,6 +1078,12 @@ def build_source_list(results: list) -> str:
 def build_prompt(user_message: str, history: list) -> str:
     uploaded_files_exist = len(memory["files"]) > 0
 
+    # Only a MODE 3 file-security-analysis turn should carry the scanner
+    # findings panel back to the UI. Default off; flipped on just before
+    # the MODE 3 return. Stops stale findings from a prior scan bleeding
+    # onto general-knowledge, redirect, and generation answers.
+    memory["_analysis_turn"] = False
+
     # =====================================================
     # MODE 0.5 — REDIRECT INTENT (topic change)
     # Sets general_mode=True so the NEXT messages also
@@ -1136,10 +1181,41 @@ At the end of your answer, if relevant, offer one line such as:
 """
 
     # =====================================================
+    # MODE 2.5 — GENERATION REQUEST (write / rewrite an artifact)
+    # "share a non-vulnerable Dockerfile", "rewrite this secure",
+    # "generate a hardened k8s manifest". Produce the artifact —
+    # do NOT re-run analysis or attach the old findings panel.
+    # =====================================================
+    if is_generation_request(user_message):
+        file_context = build_full_file_context()
+        return f"""User Message:
+{user_message}
+
+Uploaded file context (may be empty if the user pasted content inline):
+{file_context}
+
+Instructions:
+
+The user is asking you to WRITE or REWRITE a config/file artifact
+(Dockerfile, Kubernetes manifest, Terraform, CI workflow, etc.), not
+to audit one. Produce the requested artifact directly:
+- Output the complete, ready-to-use file as a single fenced code block.
+- Apply security best practices (pinned non-root images, least
+  privilege, no secrets, healthchecks, resource limits as relevant).
+- Add short inline comments only where a change materially improves
+  security, so the user understands what you hardened and why.
+- After the code block, add a brief bullet list of the key hardening
+  changes you made.
+Do NOT show a repository summary, findings dashboard, risk score, or
+the scanner findings panel — this is a generation task, not an audit.
+"""
+
+    # =====================================================
     # MODE 3 — FILES PRESENT + FILE-RELATED QUESTION
     # Full dual-context: direct file injection + RAG
     # File context is cached; RAG results cached per query.
     # =====================================================
+    memory["_analysis_turn"] = True  # this turn carries the findings panel
     full_file_context = build_full_file_context()
 
     # RAG cache: skip vector search if same query + same files
