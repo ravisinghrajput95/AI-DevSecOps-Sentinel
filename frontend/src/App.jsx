@@ -701,7 +701,7 @@ function getStackAwareQuickActions(uploadedFiles) {
   if (hasHelm || hasZip)
     actions.push({ label: "⚓ Helm Audit",         msg: "Audit Helm chart values and templates for security issues" });
   if (hasCicd || hasZip)
-    actions.push({ label: "🔁 CI/CD Analysis",    msg: "Analyse CI/CD pipelines for hardcoded secrets and insecure patterns" });
+    actions.push({ label: "🔁 CI/CD Analysis",    msg: "Analyse the uploaded CI/CD pipeline files for hardcoded secrets and insecure patterns" });
   if (hasNode || hasZip)
     actions.push({ label: "📦 Node.js Deps",      msg: "Check Node.js dependencies in package.json for known vulnerabilities and outdated versions" });
   if (hasJava || hasZip)
@@ -1304,7 +1304,7 @@ function FollowUpSuggestions({ blocks, onSend }) {
   if (hasVulnDep)  suggestions.push({ label: "📦 Show vulnerable dependencies", msg: "List all vulnerable dependencies with exact versions and recommended upgrades" });
   if (hasNetwork)  suggestions.push({ label: "🌐 Fix network exposure",         msg: "Show all network exposure issues and generate fixed configurations" });
   suggestions.push({ label: "📋 Generate full security report", msg: "Generate a complete security report with all findings, evidence, compliance mapping, and remediation steps" });
-  suggestions.push({ label: "💡 Explain the top vulnerability", msg: "Explain the most critical vulnerability found and how an attacker would exploit it" });
+  suggestions.push({ label: "💡 Explain the top vulnerability", msg: "Explain the most critical vulnerability in the uploaded files — how an attacker would exploit it, its impact, and the fix" });
 
   if (suggestions.length === 0) return null;
 
