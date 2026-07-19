@@ -10,4 +10,5 @@ description = "Test tree only contains deliberately fake credentials — vulnera
 paths = [
   '''tests/.*''',
   '''evals/ai_eval\.py''',
+  '''deploy/smoke_test\.py''',
 ]
