@@ -83,6 +83,12 @@ jobs:
           curl -sSfL https://github.com/controlplaneio/kubesec/releases/download/v2.14.2/kubesec_linux_amd64.tar.gz \
             | tar -xz -C "$HOME/.local/bin" kubesec
 
+          curl -sSfL https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz \
+            | tar -xJ -C "$HOME/.local/bin" --strip-components=1 shellcheck-v0.10.0/shellcheck
+
+          curl -sSfL https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz \
+            | tar -xz -C "$HOME/.local/bin" actionlint
+
       - name: Verify all scanners are available
         run: |
           python -c "
