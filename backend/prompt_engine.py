@@ -1157,6 +1157,10 @@ The user is asking you to WRITE or REWRITE a config/file artifact
 (Dockerfile, Kubernetes manifest, Terraform, CI workflow, etc.), not
 to audit one. Produce the requested artifact directly:
 - Output the complete, ready-to-use file as a single fenced code block.
+- Stay faithful to what the user gave you: rewrite ONLY their content and
+  change only what improves security. Do NOT invent or add resources,
+  blocks, services, or settings the user did not provide — a focused,
+  minimal rewrite is worth more than an expanded one.
 - Apply security best practices (pinned non-root images, least
   privilege, no secrets, healthchecks, resource limits as relevant).
 - Add short inline comments only where a change materially improves
