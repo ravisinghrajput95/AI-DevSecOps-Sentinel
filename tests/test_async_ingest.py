@@ -102,6 +102,19 @@ def test_zip_plus_url_prioritises_upload_and_skips_url(client):
     assert "Analysis done." in body["response"]
 
 
+def test_greeting_with_files_identifies_as_ai(client):
+    # "hi" with a file in context must still identify as AI (not just
+    # "Hey! I still have your files…").
+    import base64
+    m.memory["files"] = []
+    content = base64.b64encode(b"FROM ubuntu:latest\n").decode()
+    r = client.post("/chat", json={
+        "message": "hi", "files": [{"name": "Dockerfile", "content": content}]
+    }).json()
+    assert "AI DevSecOps Sentinel" in r["response"]
+    assert "in context" in r["response"].lower()
+
+
 def test_affirmative_after_offer_runs_audit(client):
     # "yes please" right after the assistant offered an audit menu must run
     # the analysis (findings surfaced), not re-prompt with the same menu.

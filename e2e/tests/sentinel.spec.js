@@ -4,6 +4,7 @@ import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TF_FIXTURE = path.join(__dirname, "..", "fixtures", "main.tf");
+const MD_FIXTURE = path.join(__dirname, "..", "fixtures", "CHANGELOG.md");
 
 // Each test runs in a fresh browser context (isolated session/localStorage),
 // so they don't leak file context into each other. They share one worker and
@@ -56,6 +57,19 @@ test('"yes audit" on an uploaded file triggers the scan (not a canned reply)', a
     timeout: 90_000,
   });
   await expect(page.getByText(/Ready when you are/i)).toHaveCount(0);
+});
+
+test("documentation file shows a doc note, not a vulnerability dashboard", async ({ page }) => {
+  await page.goto("/");
+  await page.locator('input[type="file"]').setInputFiles(MD_FIXTURE);
+  await expect(page.getByText("CHANGELOG.md").first()).toBeVisible({ timeout: 15_000 });
+
+  await send(page, "analyse");
+  // A clean doc must present as documentation, not a Critical/High/Medium/Low grid.
+  await expect(page.getByText(/no security-relevant configuration/i)).toBeVisible({
+    timeout: 90_000,
+  });
+  await expect(page.getByText(/Repository Summary/i)).toHaveCount(0);
 });
 
 test("generation note renders as italic, not literal underscores (#6)", async ({ page }) => {

@@ -514,8 +514,9 @@ async def chat(req: ChatRequest):
             suffix = f" and {more} more" if more > 0 else ""
             return finish({
                 "response": (
-                    f"Hey! I still have your uploaded files in context "
-                    f"({filenames}{suffix}).\n\n"
+                    f"Hey! I'm **AI DevSecOps Sentinel** — your AI DevOps & "
+                    f"DevSecOps engineer. I still have your uploaded files in "
+                    f"context ({filenames}{suffix}).\n\n"
                     f"What would you like to explore next?\n\n"
                     f"- Security audit\n"
                     f"- Misconfiguration review\n"

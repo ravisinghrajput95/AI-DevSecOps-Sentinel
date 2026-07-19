@@ -1011,6 +1011,18 @@ function deriveRepoContext(blocks, uploadedFiles, scannerFindings) {
 // DASHBOARD
 // =========================================================
 
+// Documentation files (.md, README, LICENSE, …) have no scannable security
+// surface beyond secrets. When such a file is analysed and nothing was
+// flagged, a Critical/High/Medium/Low risk dashboard is misleading — so we
+// show a documentation note instead of the severity grid.
+const DOC_EXTS = [".md", ".markdown", ".txt", ".rst", ".adoc"];
+const DOC_NAMES = ["license", "changelog", "readme", "contributing", "code_of_conduct", "authors", "notice", "codeowners", "maintainers"];
+function isDocFile(name) {
+  const n = (name || "").toLowerCase().split("/").pop();
+  const base = n.split(".")[0];
+  return DOC_EXTS.some(e => n.endsWith(e)) || DOC_NAMES.includes(base);
+}
+
 function buildDashboard(blocks) {
   const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, SECRETS: 0, KUBERNETES: 0, TERRAFORM: 0, DOCKER: 0, "CI-CD": 0, MISCONFIGURATION: 0, "VULNERABLE-DEPENDENCY": 0, NETWORK: 0, COMPLIANCE: 0 };
   let totalFiles = 0;
@@ -1036,6 +1048,22 @@ function Dashboard({ blocks, scannerFindings }) {
   const sevCounts = hasScanData ? countScannerFindings(scannerFindings) : proseCounts;
   const counts = { ...proseCounts, ...sevCounts };
   const total = counts.CRITICAL + counts.HIGH + counts.MEDIUM + counts.LOW;
+
+  // Documentation-only analysis with nothing flagged: don't frame a doc as a
+  // vulnerability target with a risk score — show a doc note, let the summary
+  // card below carry the "other findings" (purpose, contents).
+  const docBlocks = (blocks || []).filter(b => b.type === "file_analysis");
+  const allDocs = docBlocks.length > 0 && docBlocks.every(b => isDocFile(b.filename));
+  if (total === 0 && counts.SECRETS === 0 && allDocs) {
+    return (
+      <div style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: "10px", padding: "12px 14px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "9px" }}>
+        <span style={{ fontSize: "16px" }}>📄</span>
+        <span style={{ fontSize: "12px", color: "#8b949e" }}>
+          <span style={{ color: "#e6edf3", fontWeight: "600" }}>Documentation</span> — no security-relevant configuration to scan. Summary below.
+        </span>
+      </div>
+    );
+  }
 
   const riskLevel = counts.CRITICAL > 0 ? { label: "HIGH RISK", color: "#ff4444" }
     : counts.HIGH > 0   ? { label: "ELEVATED",  color: "#ff8800" }
