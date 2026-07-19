@@ -102,6 +102,36 @@ def test_zip_plus_url_prioritises_upload_and_skips_url(client):
     assert "Analysis done." in body["response"]
 
 
+def test_affirmative_after_offer_runs_audit(client):
+    # "yes please" right after the assistant offered an audit menu must run
+    # the analysis (findings surfaced), not re-prompt with the same menu.
+    import base64
+    m.memory["files"] = []  # start clean
+    content = base64.b64encode(b"FROM ubuntu:latest\nUSER root\n").decode()
+    with patch("backend.main.build_prompt", return_value="P"), \
+         patch("backend.main.ask_openai", return_value="Full audit complete."):
+        # upload a file first so it's in context
+        client.post("/chat", json={"message": "hi", "files": [{"name": "Dockerfile", "content": content}]})
+        offer_history = [["hi", "What would you like to explore next?\n- Security audit"]]
+        r = client.post("/chat", json={"message": "yes please", "history": offer_history}).json()
+    assert "Full audit complete." in r["response"]
+    assert "What would you like to dig into next" not in r["response"]
+
+
+def test_affirmative_without_offer_shows_menu(client):
+    # A bare "yes" with NO prior offer (e.g. after a findings result) must
+    # NOT spuriously re-run analysis — it re-prompts with the menu.
+    import base64
+    m.memory["files"] = []
+    content = base64.b64encode(b"FROM ubuntu:latest\n").decode()
+    client.post("/chat", json={"message": "hi", "files": [{"name": "Dockerfile", "content": content}]})
+    r = client.post("/chat", json={
+        "message": "yes please",
+        "history": [["audit", "REPOSITORY SUMMARY: 1 finding"]],
+    }).json()
+    assert "What would you like to dig into next" in r["response"]
+
+
 def test_url_alone_still_starts_ingest_job(client):
     # No attachment → a bare URL must still kick off the repo ingest job.
     fake = {"name": "o/r", "files": 2}
