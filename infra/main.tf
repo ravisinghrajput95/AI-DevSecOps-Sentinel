@@ -42,8 +42,8 @@ resource "google_container_cluster" "sentinel" {
     channel = "REGULAR"
   }
 
-  # Prevents `terraform destroy` from silently taking the
-  # cluster with it — flip to false first when you really
-  # mean to tear it down.
-  deletion_protection = true
+  # Ephemeral demo infra: deletion_protection is off so the cluster can be
+  # torn down with `terraform destroy` and re-provisioned on demand. Set
+  # back to true for a long-lived deployment.
+  deletion_protection = false
 }
