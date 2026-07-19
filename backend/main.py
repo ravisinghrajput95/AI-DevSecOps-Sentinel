@@ -375,18 +375,23 @@ async def chat(req: ChatRequest):
         await asyncio.to_thread(save_uploaded_files, req.files)
         if req.files else []
     )
+    # Free-form notes prepended to whatever the turn returns (e.g. "your
+    # pasted URL was skipped because you also attached a zip").
+    info_notes: list[str] = []
 
     def finish(payload: dict) -> dict:
-        """Prepend any upload rejections to the outgoing response."""
+        """Prepend any upload rejections + info notes to the response."""
+        prefix = ""
         if upload_warnings:
             notes = "\n".join(
                 f"- **{w['name']}** — {w['reason']}" for w in upload_warnings
             )
-            payload["response"] = (
-                f"⚠️ Some uploads were skipped:\n{notes}\n\n"
-                + payload.get("response", "")
-            )
+            prefix += f"⚠️ Some uploads were skipped:\n{notes}\n\n"
             payload["upload_warnings"] = upload_warnings
+        if info_notes:
+            prefix += "\n\n".join(info_notes) + "\n\n"
+        if prefix:
+            payload["response"] = prefix + payload.get("response", "")
         return payload
 
     # =====================================================
@@ -422,6 +427,28 @@ async def chat(req: ChatRequest):
 
     github_ref = parse_github_url(user_message)
     ingested_repo = None
+
+    # BOTH a zip AND a repo URL in one message: the attached files win.
+    # Scanning both would double-count a "similar" repo and produce
+    # mismatched / duplicated findings. Skip the URL, keep analysing the
+    # upload, and tell the user how to scan the repo instead. Only applies
+    # when at least one file was actually accepted this request.
+    accepted_upload = bool(req.files) and len(upload_warnings) < len(req.files)
+    if github_ref and accepted_upload:
+        owner, repo, branch = github_ref
+        label = f"{owner}/{repo}" + (f"@{branch}" if branch else "")
+        rejected_names = {w["name"] for w in upload_warnings}
+        attached = ", ".join(
+            f"**{f.get('name', 'file')}**" for f in req.files
+            if isinstance(f, dict) and f.get("name") not in rejected_names
+        )
+        info_notes.append(
+            f"📎 You sent a repo URL and an upload. I'm analysing your "
+            f"attached files ({attached}) — the URL `{label}` was skipped. "
+            f"Send it on its own (no attachment) to scan the remote repo instead."
+        )
+        github_ref = None  # fall through to normal file analysis
+
     if github_ref:
         owner, repo, branch = github_ref
         logger.info("github ingest (async) %s/%s%s",

@@ -83,6 +83,36 @@ def test_chat_github_url_kicks_off_job_and_completes(client):
         assert "Ingested" in done["result"]["response"]
 
 
+def test_zip_plus_url_prioritises_upload_and_skips_url(client):
+    # Both an attachment and a repo URL in one message: the upload wins,
+    # the URL is skipped (no async job started), and the reply says so.
+    import base64
+    content = base64.b64encode(b"FROM ubuntu:latest\nUSER root\n").decode()
+    with patch("backend.main.build_prompt", return_value="P"), \
+         patch("backend.main.ask_openai", return_value="Analysis done."):
+        r = client.post("/chat", json={
+            "message": "scan https://github.com/o/r",
+            "files": [{"name": "Dockerfile", "content": content}],
+        })
+    body = r.json()
+    assert r.status_code == 200
+    assert "job_id" not in body          # URL ingest was NOT started
+    assert "was skipped" in body["response"]
+    assert "o/r" in body["response"]
+    assert "Analysis done." in body["response"]
+
+
+def test_url_alone_still_starts_ingest_job(client):
+    # No attachment → a bare URL must still kick off the repo ingest job.
+    fake = {"name": "o/r", "files": 2}
+    with patch("backend.main.ingest_github_repo", return_value=fake), \
+         patch("backend.main._github_summary", return_value={"response": "ok"}):
+        body = client.post(
+            "/chat", json={"message": "https://github.com/o/r"}
+        ).json()
+        assert body.get("status") == "running" and "job_id" in body
+
+
 def test_failed_ingest_reports_error(client):
     with patch("backend.main.ingest_github_repo", side_effect=ValueError("not found")):
         jid = client.post(
