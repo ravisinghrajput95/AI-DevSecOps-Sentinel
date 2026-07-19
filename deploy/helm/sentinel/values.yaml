@@ -26,8 +26,10 @@ backend:
   existingSecret: sentinel-secrets
   env:
     llmModel: gpt-4o
-    # Completion cap — raise for heavier models writing long reports.
-    llmMaxTokens: "4096"
+    # Completion cap. 4096 truncated multi-file reports (a 10-file audit ran
+    # past it mid-finding); 16000 covers a large report and is within gpt-4o's
+    # output limit. Raise further for heavier models / bigger repos.
+    llmMaxTokens: "16000"
     # OpenAI-compatible endpoint. Empty => the real OpenAI API. Set to a
     # gateway/proxy URL (LiteLLM, OpenRouter, Anthropic/Bedrock proxy) to
     # switch providers without a code change.
