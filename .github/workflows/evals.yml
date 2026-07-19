@@ -28,7 +28,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install requests
+        # prometheus-client is pulled in by backend.scanners -> backend.metrics
+        # (the benchmark imports the real scanner registry).
+        run: pip install requests prometheus-client
 
       - name: Install security scanners
         run: |
