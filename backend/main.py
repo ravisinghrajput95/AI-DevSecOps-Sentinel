@@ -633,6 +633,17 @@ async def chat(req: ChatRequest):
 
     answer = await asyncio.to_thread(_analyse)
 
+    # A generation turn ("write me a hardened Dockerfile") returns an
+    # example artifact, not an audit. Guarantee the disclaimer in code so
+    # the user never mistakes generated output for a scan of their files —
+    # the LLM paraphrases the prompt's note unreliably.
+    if memory.get("_generation_turn") and "generated example" not in answer.lower():
+        answer = answer.rstrip() + (
+            "\n\n_This is a generated example. My scanners only run on "
+            "uploaded files or a pasted repo — save this file and upload "
+            "it if you'd like me to verify it._"
+        )
+
     # Only a genuine file-security-analysis turn (build_prompt MODE 3)
     # carries the findings panel. General-knowledge answers, topic
     # redirects and generation requests must NOT re-surface the previous
