@@ -47,9 +47,11 @@ The one analysis endpoint. Rate-limited per client
 }
 ```
 
-- `message` — the user prompt. A bare GitHub URL triggers ingestion +
-  a canned scan summary; a URL plus a question ingests then analyses.
-  An empty message never calls the LLM.
+- `message` — the user prompt. An empty message never calls the LLM.
+  A **GitHub URL** starts an **async** ingest: the response is a job
+  handle (`{ "response": "📦 Ingesting…", "job_id": "...", "status":
+  "running" }`) — poll `GET /scan-status/{job_id}` for the result
+  rather than blocking on the ~40s download+scan.
 - `files` — base64-encoded uploads (single files or a `.zip`).
   Oversized/unsupported/zip-bomb/zip-slip uploads are rejected and
   reported (see `upload_warnings`), never silently dropped.
@@ -72,6 +74,21 @@ The one analysis endpoint. Rate-limited per client
 (never through the LLM). Secret values are always redacted, in both
 findings and prose. `repo` and `upload_warnings` appear only when
 relevant.
+
+## `GET /scan-status/{job_id}`
+
+Polls an async ingest job (from a GitHub URL in `/chat`). Scoped to
+the caller's session — another session's job id returns `404`.
+
+```json
+{ "job_id": "...", "status": "running|done|error",
+  "phase": "downloading|scanning|done", "error": null,
+  "result": { "response": "...", "findings": [ ... ],
+              "scanners": { ... }, "repo": { ... } } }
+```
+
+`result` is populated only when `status` is `done`; it has the same
+shape as a `/chat` response. On `error`, `error` carries the reason.
 
 ## `POST /remove-file`
 
