@@ -204,7 +204,10 @@ as its own finding).
 
 Runs in production on **GKE Autopilot**, provisioned with Terraform
 and deployed via Helm — the same IaC and manifests the tool itself
-knows how to audit.
+knows how to audit. The Helm chart is **cloud-agnostic** (standard
+ingress-nginx + PVC + Secret, no GKE lock-in), so the same
+`helm upgrade --install` runs on **EKS, AKS, or on-prem (VMware, k3s,
+OpenShift)** — see [running on other clusters](docs/DEPLOYMENT.md#other-clusters--eks-aks-on-prem-vmware-k3s-openshift).
 
 **Infrastructure** ([`infra/`](infra/README.md), Terraform with
 GCS-backed state):
