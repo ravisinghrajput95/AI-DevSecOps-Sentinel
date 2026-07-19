@@ -135,6 +135,63 @@ kubectl get certificate sentinel-tls -w
 Switch `ingress.tls.clusterIssuer` to `letsencrypt-staging` first if
 you want to validate the plumbing without spending prod rate limit.
 
+## Other clusters — EKS, AKS, on-prem (VMware, k3s, OpenShift)
+
+The application is **cloud-agnostic**. The Helm chart uses only standard
+Kubernetes primitives — an `ingress-nginx` Ingress (not GKE's GCE
+ingress), a `LoadBalancer` Service, a PVC on the cluster's **default**
+StorageClass, and a plain `Secret`. There are no `cloud.google.com/*`
+annotations, no `BackendConfig`, and no Autopilot-specific settings. So
+the app runs on any CNCF-conformant cluster with no code changes.
+
+Only the platform plumbing *around* the app differs per cloud — none of
+it is application code:
+
+| Concern | GKE (this repo) | EKS | AKS | On-prem (VMware/k3s) |
+|---|---|---|---|---|
+| Image registry | Artifact Registry | ECR (or GHCR) | ACR (or GHCR) | Harbor / GHCR |
+| CI → cloud auth | Workload Identity Federation | IRSA / GitHub OIDC → IAM | Azure Workload Identity | registry creds / OIDC |
+| Cluster provisioning | `infra/` Terraform (GKE) | EKS module / `eksctl` | AKS module / `az aks` | Tanzu / kubeadm / k3s |
+| LoadBalancer | GCP LB (built-in) | AWS LB Controller (built-in ELB) | Azure LB (built-in) | MetalLB / NSX-ALB |
+| Default StorageClass | `standard-rwo` | `gp3` | `managed-csi` | vSphere CSI / local-path |
+
+**The install itself is identical everywhere.** Once you have a cluster
+with `kubectl` access:
+
+```bash
+# 1. Cluster prerequisites — same chart/version on every platform
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+  -n ingress-nginx --create-namespace
+helm upgrade --install cert-manager jetstack/cert-manager \
+  -n cert-manager --create-namespace --set crds.enabled=true
+
+# 2. Push the images to your registry, then set image.repository/tag in
+#    values (or --set). Build args are unchanged across platforms.
+
+# 3. Create the secret (never in values):
+kubectl create secret generic sentinel-secrets \
+  --from-literal=OPENAI_API_KEY=sk-... \
+  --from-literal=SENTINEL_API_KEY=$(openssl rand -hex 24)
+
+# 4. Same install command as GKE:
+helm upgrade --install sentinel deploy/helm/sentinel \
+  --set backend.image.repository=<your-registry>/sentinel-backend \
+  --set frontend.image.repository=<your-registry>/sentinel-frontend
+```
+
+Platform notes:
+- **EKS**: install the AWS Load Balancer Controller if you want an NLB/ALB;
+  the in-tree ELB works out of the box. `gp3` is the default StorageClass.
+- **AKS**: `managed-csi` is the default StorageClass; the Azure LB is
+  automatic. Use ACR with `az acr login` or an imagePullSecret.
+- **On-prem / VMware / bare-metal**: provide a LoadBalancer implementation
+  (MetalLB, or NSX Advanced LB on Tanzu) and a StorageClass (vSphere CSI,
+  or `local-path` on k3s). Everything else is identical.
+- The `infra/` Terraform is **GKE-specific** (it provisions the cluster).
+  For EKS/AKS, provision the cluster with your platform's tooling and skip
+  `infra/` — the app deploy above is unchanged.
+
 ## Docker compose (single VM / local)
 
 Container-based deployment for a single VM or host. The stack is two
