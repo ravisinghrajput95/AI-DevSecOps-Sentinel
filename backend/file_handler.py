@@ -136,8 +136,11 @@ def read_file_content(filepath):
     return None
 
 
-def ingest_zip(zip_path):
-    project_name = os.path.basename(zip_path).replace(".zip", "")
+def ingest_zip(zip_path, project_name=None):
+    # Use the caller-supplied name (original upload filename) so finding
+    # paths don't leak the random temp file name (e.g. tmpszlj97bm/...).
+    if project_name is None:
+        project_name = os.path.basename(zip_path).replace(".zip", "")
     extract_path = os.path.join(workspace_dir(), project_name)
 
     if os.path.exists(extract_path):
@@ -155,6 +158,17 @@ def ingest_zip(zip_path):
         for item in os.listdir(wrapper):
             shutil.move(os.path.join(wrapper, item), extract_path)
         os.rmdir(wrapper)
+
+    # Physically remove ignored dirs (.venv/.git/node_modules/…) from the
+    # workspace BEFORE scanning. The scanners run over the whole workspace,
+    # so leaving these in makes a manual zip (which ships .venv) produce
+    # wildly different, noisy findings vs a GitHub zipball (which doesn't),
+    # and makes scans slow. This keeps both paths consistent and fast.
+    for root, dirs, _files in os.walk(extract_path):
+        for d in list(dirs):
+            if d in IGNORED_DIRS:
+                shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+                dirs.remove(d)
 
     indexed_files = []
 
@@ -370,7 +384,10 @@ def save_uploaded_files(files: list, project_name: str = "default"):
         try:
             if filename.lower().endswith(".zip"):
                 logger.info("ingesting zip: %s", filename)
-                indexed = ingest_zip(tmp_path)
+                # Project name from the ORIGINAL upload name, not the temp
+                # file, so finding paths read cleanly.
+                proj = os.path.basename(filename)[:-4] or "project"
+                indexed = ingest_zip(tmp_path, project_name=proj)
                 if not indexed:
                     reject(filename, "no supported files found in the archive")
                     continue
