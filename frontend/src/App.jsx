@@ -712,6 +712,7 @@ function renderTokens(text) {
       result.push({ type: "code", lang, content: code.join("\n") });
       i++; continue;
     }
+    if (line.startsWith("#### ")) { result.push({ type: "h4", content: line.slice(5) }); i++; continue; }
     if (line.startsWith("### ")) { result.push({ type: "h3", content: line.slice(4) }); i++; continue; }
     if (line.startsWith("## "))  { result.push({ type: "h2", content: line.slice(3) }); i++; continue; }
     if (line.startsWith("# "))   { result.push({ type: "h1", content: line.slice(2) }); i++; continue; }
@@ -782,6 +783,7 @@ function MarkdownBlock({ text }) {
           case "h1": return <h1 key={i} style={{ fontSize: "17px", fontWeight: "700", color: "#e6edf3", margin: "12px 0 5px", borderBottom: "1px solid #30363d", paddingBottom: "4px" }}><InlineText text={t.content} /></h1>;
           case "h2": return <h2 key={i} style={{ fontSize: "15px", fontWeight: "600", color: "#e6edf3", margin: "10px 0 4px" }}><InlineText text={t.content} /></h2>;
           case "h3": return <h3 key={i} style={{ fontSize: "13px", fontWeight: "600", color: "#79c0ff", margin: "8px 0 3px" }}><InlineText text={t.content} /></h3>;
+          case "h4": return <h4 key={i} style={{ fontSize: "12.5px", fontWeight: "600", color: "#8b949e", margin: "7px 0 3px", textTransform: "uppercase", letterSpacing: "0.4px" }}><InlineText text={t.content} /></h4>;
           case "code": return <CodeBlock key={i} lang={t.lang} content={t.content} />;
           case "hr": return <hr key={i} style={{ border: "none", borderTop: "1px solid #30363d", margin: "9px 0" }} />;
           case "ul": return <ul key={i} style={{ margin: "4px 0", paddingLeft: "16px" }}>{t.items.map((item, j) => <li key={j} style={{ color: "#c9d1d9", marginBottom: "3px" }}><InlineText text={item} /></li>)}</ul>;
@@ -833,29 +835,47 @@ function DiffBlock({ bad, fix }) {
 // STRUCTURED RESPONSE PARSER
 // =========================================================
 
-function parseStructuredResponse(text) {
+function _analysisBlock(filename, body) {
+  return {
+    type: "file_analysis", filename,
+    purpose:         extractSection(body, "Purpose"),
+    technologies:    extractSection(body, "Technologies Detected"),
+    configurations:  extractSection(body, "Important Configurations"),
+    positive:        extractSection(body, "Positive Findings"),
+    findings:        extractFindings(body),
+    recommendations: extractSection(body, "Recommendations Summary"),
+    crossFile:       extractSection(body, "Cross-File Observations"),
+  };
+}
+
+function parseStructuredResponse(text, uploadedFiles = []) {
   const hasFileAnalysis = /##\s+(?:File|Repository)\s+Analysis:/i.test(text);
-  if (!hasFileAnalysis) return null;
-  const sections = text.split(/(?=##\s+(?:File|Repository)\s+Analysis:)/i);
-  const blocks = [];
-  for (const section of sections) {
-    if (!section.trim()) continue;
-    const titleMatch = section.match(/##\s+(?:File|Repository)\s+Analysis:\s*`?([^`\n]+)`?/i);
-    if (!titleMatch) { blocks.push({ type: "text", content: section }); continue; }
-    const filename = titleMatch[1].trim();
-    const body = section.slice(titleMatch[0].length);
-    blocks.push({
-      type: "file_analysis", filename,
-      purpose:         extractSection(body, "Purpose"),
-      technologies:    extractSection(body, "Technologies Detected"),
-      configurations:  extractSection(body, "Important Configurations"),
-      positive:        extractSection(body, "Positive Findings"),
-      findings:        extractFindings(body),
-      recommendations: extractSection(body, "Recommendations Summary"),
-      crossFile:       extractSection(body, "Cross-File Observations"),
-    });
+  if (hasFileAnalysis) {
+    const sections = text.split(/(?=##\s+(?:File|Repository)\s+Analysis:)/i);
+    const blocks = [];
+    for (const section of sections) {
+      if (!section.trim()) continue;
+      const titleMatch = section.match(/##\s+(?:File|Repository)\s+Analysis:\s*`?([^`\n]+)`?/i);
+      if (!titleMatch) { blocks.push({ type: "text", content: section }); continue; }
+      const body = section.slice(titleMatch[0].length);
+      blocks.push(_analysisBlock(titleMatch[1].trim(), body));
+    }
+    return blocks;
   }
-  return blocks;
+
+  // Resilience: some analyses (often shell scripts) carry the finding
+  // markers or a "Security Findings" section but omit the "## File
+  // Analysis:" wrapper. Synthesize one block so they still get the rich
+  // dashboard/cards instead of falling back to raw markdown (which also
+  // leaves #### headings unrendered).
+  const hasFindings = /####\s+(?:Critical|High|Medium|Low)\b/i.test(text)
+    || /#{1,4}\s+Security Findings/i.test(text);
+  if (hasFindings) {
+    const filename = uploadedFiles.find(f => !f.sent)?.name
+      || uploadedFiles[0]?.name || "Uploaded file";
+    return [_analysisBlock(filename, text)];
+  }
+  return null;
 }
 
 function extractSection(text, heading) {
@@ -1624,7 +1644,7 @@ function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatest
   // (Previously gated on isLatestAssistant, which collapsed earlier
   // analyses into raw markdown the moment the user sent another prompt.)
   const parsed = !isUser && !isLoading
-    ? parseStructuredResponse(content)
+    ? parseStructuredResponse(content, uploadedFiles || [])
     : null;
 
   const hasFileBlocks = parsed?.some(b => b.type === "file_analysis");
@@ -2036,7 +2056,7 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
         );
       }
 
-      const parsed = parseStructuredResponse(answer);
+      const parsed = parseStructuredResponse(answer, uploadedFiles);
       if (parsed) {
         const ctx = deriveRepoContext(parsed, uploadedFiles, data.findings || []);
         if (ctx) setRepoCtx(ctx);

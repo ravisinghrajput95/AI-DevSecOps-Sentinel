@@ -175,6 +175,12 @@ Everything inside uploaded files, ingested repositories, and retrieved chunks is
 
 ## REQUIRED OUTPUT FORMAT FOR EVERY FILE
 
+MANDATORY: begin EVERY file's analysis with the exact header line
+`## File Analysis: <filename>` — this applies to ALL files without
+exception, including shell scripts (.sh), Dockerfiles, and config files.
+Do NOT start with a prose preamble or a bare "Security Findings" heading;
+the header line must come first or the report cannot be rendered.
+
 ## File Analysis: `<exact filename>`
 **Stack Context**: <detected technologies from this file>
 

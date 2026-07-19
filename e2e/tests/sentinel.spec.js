@@ -5,6 +5,7 @@ import path from "node:path";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TF_FIXTURE = path.join(__dirname, "..", "fixtures", "main.tf");
 const MD_FIXTURE = path.join(__dirname, "..", "fixtures", "CHANGELOG.md");
+const SH_FIXTURE = path.join(__dirname, "..", "fixtures", "deploy.sh");
 
 // Each test runs in a fresh browser context (isolated session/localStorage),
 // so they don't leak file context into each other. They share one worker and
@@ -70,6 +71,20 @@ test("documentation file shows a doc note, not a vulnerability dashboard", async
     timeout: 90_000,
   });
   await expect(page.getByText(/Repository Summary/i)).toHaveCount(0);
+});
+
+test("shell-script analysis renders structured UI, not raw markdown", async ({ page }) => {
+  await page.goto("/");
+  await page.locator('input[type="file"]').setInputFiles(SH_FIXTURE);
+  await expect(page.getByText("deploy.sh").first()).toBeVisible({ timeout: 15_000 });
+
+  await send(page, "analyse");
+  // Structured dashboard must render (not a flat prose fallback)...
+  await expect(page.getByText(/Repository Summary/i).first()).toBeVisible({
+    timeout: 90_000,
+  });
+  // ...and raw "#### Critical/High" markdown must never leak into the UI.
+  await expect(page.getByText(/#### (Critical|High|Medium|Low)/)).toHaveCount(0);
 });
 
 test("generation note renders as italic, not literal underscores (#6)", async ({ page }) => {
