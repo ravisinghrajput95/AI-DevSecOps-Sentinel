@@ -87,6 +87,23 @@ test("shell-script analysis renders structured UI, not raw markdown", async ({ p
   await expect(page.getByText(/#### (Critical|High|Medium|Low)/)).toHaveCount(0);
 });
 
+test("targeted follow-up question still renders the dashboard (uniform UI)", async ({ page }) => {
+  await page.goto("/");
+  await page.locator('input[type="file"]').setInputFiles(TF_FIXTURE);
+  await expect(page.getByText("main.tf").first()).toBeVisible({ timeout: 15_000 });
+  await send(page, "audit this file for security issues");
+  await expect(page.getByText(/Repository Summary/i).first()).toBeVisible({ timeout: 90_000 });
+
+  // A focused action-style question (like the quick-action / follow-up
+  // buttons) must ALSO render the dashboard + findings panel, not a plain
+  // prose wall — the whole point of the uniform-UI fix.
+  await send(page, "are there hardcoded secrets in this file?");
+  // wait for a second assistant turn, then confirm a dashboard is present in it
+  await page.waitForTimeout(3000);
+  await expect(page.getByText(/Repository Summary/i).last()).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByText(/Verified Scanner Findings/i).last()).toBeVisible({ timeout: 10_000 });
+});
+
 test("generation note renders as italic, not literal underscores (#6)", async ({ page }) => {
   await page.goto("/");
   await send(page, "write me a non-vulnerable Dockerfile for a python app");
