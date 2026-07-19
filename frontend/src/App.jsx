@@ -1133,14 +1133,19 @@ function buildDashboard(blocks) {
 
 function Dashboard({ blocks, scannerFindings }) {
   const { counts: proseCounts, totalFiles } = buildDashboard(blocks);
-  if (totalFiles === 0) return null;
+  const hasScanData = (scannerFindings || []).length > 0;
+  // Render whenever there are parsed per-file cards OR verified scanner
+  // findings — so a targeted action response (plain prose, no per-file
+  // blocks) still gets the same dashboard header as a full audit.
+  if (totalFiles === 0 && !hasScanData) return null;
 
   // Severity numbers come from verified scanner data when a scan ran;
   // category chips still come from the AI's categorised findings.
-  const hasScanData = (scannerFindings || []).length > 0;
   const sevCounts = hasScanData ? countScannerFindings(scannerFindings) : proseCounts;
   const counts = { ...proseCounts, ...sevCounts };
   const total = counts.CRITICAL + counts.HIGH + counts.MEDIUM + counts.LOW;
+  // File count: parsed cards if present, else distinct files in the findings.
+  const displayFiles = totalFiles || new Set((scannerFindings || []).map(f => f.file).filter(Boolean)).size;
 
   // Documentation-only analysis with nothing flagged: don't frame a doc as a
   // vulnerability target with a risk score — show a doc note, let the summary
@@ -1202,7 +1207,7 @@ function Dashboard({ blocks, scannerFindings }) {
         })}
       </div>
       <div style={{ display: "flex", gap: "14px", borderTop: "1px solid #30363d", paddingTop: "9px" }}>
-        <span style={{ fontSize: "11px", color: "#8b949e" }}><span style={{ color: "#e6edf3", fontWeight: "600" }}>{totalFiles}</span> files</span>
+        <span style={{ fontSize: "11px", color: "#8b949e" }}><span style={{ color: "#e6edf3", fontWeight: "600" }}>{displayFiles}</span> files</span>
         <span style={{ fontSize: "11px", color: "#8b949e" }}><span style={{ color: "#e6edf3", fontWeight: "600" }}>{total}</span> findings</span>
       </div>
     </div>
@@ -1740,13 +1745,18 @@ function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatest
           </div>
         ) : (
           <div>
+            {/* Targeted action responses (quick actions, follow-ups,
+                sidebar links) carry verified findings but often no per-file
+                blocks — render the same dashboard + findings header so the
+                UI is uniform across every response, not a plain wall. */}
             {scannerFindings?.length > 0 && (
-              <ScannerFindingsPanel findings={scannerFindings} scannersRun={scannersRun} />
+              <>
+                <ScannerFindingsPanel findings={scannerFindings} scannersRun={scannersRun} />
+                <Dashboard blocks={parsed || []} scannerFindings={scannerFindings} />
+              </>
             )}
             <MarkdownBlock text={content} />
             {isLatestAssistant && repo && onSend && <RepoFollowUps onSend={onSend} />}
-            {/* Repo/zip ingest summaries carry findings but no per-file
-                blocks — still offer the report download right away. */}
             {onSend && scannerFindings?.length > 0 && (
               <DownloadReportButton blocks={[]} repoCtx={null} uploadedFiles={uploadedFiles || []} scannerFindings={scannerFindings} repo={repo} scannersRun={scannersRun} filesScanned={filesScanned} />
             )}
