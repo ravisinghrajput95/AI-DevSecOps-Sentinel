@@ -21,6 +21,70 @@ The platform combines:
 
 ---
 
+# 🏗 Architecture
+
+**Runtime — how a request is served.** The findings are deterministic
+scanner output (ground truth); the LLM reasons *on top of* that, never
+instead of it.
+
+```mermaid
+flowchart TB
+    User(["👤 User / Browser"])
+
+    subgraph K8S["Kubernetes cluster"]
+      Ingress["ingress-nginx + cert-manager<br/>Let's Encrypt TLS"]
+
+      subgraph FE["Frontend pod"]
+        SPA["React SPA on nginx<br/>same-origin API proxy"]
+      end
+
+      subgraph BE["Backend pod · FastAPI — async, single worker"]
+        Router["Intent + prompt router<br/>build_prompt (file / repo / general / generation)"]
+        Reg["Scanner registry — 9 tools, parallel & crash-isolated<br/>gitleaks · checkov · trivy · hadolint · semgrep<br/>kubesec · shellcheck · actionlint · injection-guard"]
+        RAG["RAG · FAISS<br/>text-embedding-3-small"]
+        Ingest["Async repo ingest<br/>job queue → /scan-status polling"]
+        Redact["Secret redaction +<br/>prompt-injection defense"]
+      end
+    end
+
+    LLM["LLM<br/>OpenAI / any OpenAI-compatible endpoint"]
+    GH["GitHub<br/>public repo download"]
+
+    User <--> Ingress
+    Ingress <--> SPA
+    SPA <-->|"/chat · /scan-status · /health"| Router
+    Ingest --> GH
+    Ingest --> Reg
+    Router --> RAG
+    Router --> Reg
+    Reg -->|"verified findings (JSON)"| Router
+    Router -->|"prompt: files + RAG + scanner ground truth"| LLM
+    LLM --> Redact
+    Redact -->|"answer + findings panel"| SPA
+```
+
+**Delivery — every deploy is gated.** Independent path-filtered lanes for
+backend and frontend; a broken build turns the pipeline red before it can
+reach a user.
+
+```mermaid
+flowchart LR
+    Push["push / PR"] --> Tests["unit + integration<br/>+ scanner availability"]
+    Tests --> Build["docker build<br/>+ in-image smoke test"]
+    Build --> Supply["supply chain<br/>SBOM · trivy · cosign (keyless)"]
+    Supply --> Deploy["helm deploy<br/>Kubernetes"]
+    Deploy --> Smoke["post-deploy smoke test<br/>9 scanners · auth · routing"]
+    Smoke --> E2E["Playwright e2e<br/>real headless browser"]
+```
+
+**Cloud-agnostic** Helm chart — standard ingress-nginx + PVC + Secret, no
+provider lock-in — so it runs on **any Kubernetes** (EKS, AKS, GKE,
+on-prem / k3s). Clusters are provisioned with **Terraform**, images live in
+a container registry, and CI→cloud auth is keyless via **OIDC**. Full
+per-platform steps: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+---
+
 # 🚀 Features
 
 ## Repository Security Analysis
