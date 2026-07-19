@@ -15,6 +15,10 @@ The platform combines:
 * Compliance mapping
 * Contextual DevOps/DevSecOps knowledge assistance
 
+![Upload a file, ask for an audit, get scanner-grounded findings](images/demo.gif)
+
+> **Upload → audit → scanner-grounded findings, evidence, and a downloadable report — in seconds.**
+
 ---
 
 # 🚀 Features
@@ -91,6 +95,67 @@ exploitability, and tags every finding `[SCANNER-VERIFIED]` or
 `[AI-DETECTED]` so you always know which claims are tool-backed.
 Verified findings are also returned as structured JSON and rendered
 in a dedicated panel in the UI.
+
+---
+
+## Repository & Input Handling
+
+Sentinel accepts three inputs — a single file, a `.zip` project, or a
+pasted **public GitHub URL** — and treats them consistently:
+
+* **Non-blocking repo ingestion** — a GitHub repo downloads and scans as
+  a background job; the request returns immediately with a job id and the
+  UI polls for progress, so large repos never time out the request or
+  stall the event loop.
+* **Scan hygiene** — dependency and build directories (`.venv`,
+  `node_modules`, `.git`, `.terraform`, `target`, `dist`, `vendor`, …)
+  are stripped before scanning, so findings come from *your* code, not a
+  vendored third-party tree. Same repo via URL or zip yields the same
+  findings.
+* **Deterministic input priority** — if a message carries both an
+  attached file and a repo URL, the **attachment wins** and the URL is
+  skipped with a clear note — no silent merging of two "similar" copies
+  into duplicated findings.
+* **Generate, don't just audit** — ask "write me a hardened Dockerfile"
+  and Sentinel produces the artifact (pinned base image, non-root,
+  healthcheck, least privilege) instead of re-running analysis, and
+  clearly labels it a generated example so it's never mistaken for a scan
+  of your files.
+
+---
+
+## Downloadable Reports
+
+Every analysis can be exported as a self-contained Markdown report built
+for stakeholders, not just engineers:
+
+* Executive summary + overall risk rating
+* **Top 5 Actions** — a prioritised, prescriptive to-do list, always
+  closed with a re-scan-to-verify step
+* Risk summary table (critical / high / medium / low)
+* Verified scanner findings grouped by tool, with **repeated rules
+  collapsed** to one row + their locations (so a rule firing on 18 files
+  reads as one prioritised item, not 18 near-identical rows)
+* Per-file analyst notes with evidence, blast radius, and fix diffs
+* Ground-truth file counts and scanner list — reproducible, not inferred
+
+---
+
+## Model-Agnostic LLM
+
+The reasoning model is swappable by configuration alone — no code change:
+
+| Setting | Purpose |
+|---|---|
+| `SENTINEL_LLM_MODEL` | which model (e.g. `gpt-4o`, a newer OpenAI model) |
+| `OPENAI_BASE_URL` | point at any OpenAI-compatible endpoint — a gateway (LiteLLM/OpenRouter), an Anthropic/Bedrock proxy, or a self-hosted model. Unset ⇒ the real OpenAI API |
+| `SENTINEL_LLM_MAX_TOKENS` | lift the completion cap for heavier models writing long reports |
+
+Because **findings come from deterministic scanners, not the model**, a
+swap can only change the narrative quality — never the ground-truth
+findings. A stronger model produces better prose and better-structured
+output; a formatting difference degrades gracefully (the findings panel
+always renders).
 
 ---
 
@@ -181,6 +246,27 @@ kubectl get svc sentinel-frontend   # EXTERNAL-IP = the UI
 For a single VM there's also a **docker compose** deployment
 (`docker compose up --build`). Full details, environment table, and
 operational caveats: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+---
+
+## Reliability & Testing
+
+Quality is enforced by a three-layer test pyramid, the last two of which
+**gate every deploy** — a broken build turns the pipeline red before it
+can reach a user:
+
+| Layer | What it checks | When |
+|---|---|---|
+| **Unit / integration** (`pytest`) | routing, scanners, redaction, session isolation, rate limiting, config | every PR + push |
+| **Wire smoke test** (`deploy/smoke_test.py`) | the live app through the ingress — health, all scanners, auth, upload limits, async ingest, routing — no LLM, fast + free | post-deploy |
+| **Browser end-to-end** (Playwright, [`e2e/`](e2e/)) | real headless Chromium drives the deployed UI: greeting, upload → analyze → findings panel + report download, generation note rendering | post-deploy |
+
+The end-to-end suite runs against the live deployment (the frontend
+bakes in its API key, so no secrets live in the tests) and, on failure,
+uploads the Playwright HTML report as a CI artifact. Reliability fixes —
+non-blocking scans that keep `/health` responsive, tuned liveness/
+readiness probes, ingress body-size and timeout limits — are all covered
+here so regressions can't silently return.
 
 ---
 
@@ -285,6 +371,10 @@ The assistant correlates explanations with uploaded repository context whenever 
 | Knowledge Assistant     | DevOps and DevSecOps explanations        |
 | AI Remediation          | Secure fix recommendations               |
 | Severity Dashboard      | Critical / High / Medium / Low summaries |
+| Async Repo Ingest       | Non-blocking scan of large GitHub repos  |
+| Artifact Generation     | Writes hardened Dockerfiles, manifests, IaC |
+| Downloadable Reports    | Stakeholder-ready Markdown with Top 5 Actions |
+| Model-Agnostic LLM      | Swap models/providers by config alone    |
 
 ---
 
@@ -328,13 +418,22 @@ into a single engineering assistant platform.
 
 # 📷 Screenshots
 
-![alt text](images/image.png)
-![alt text](images/image-1.png)
-![alt text](images/image-2.png)
-![alt text](images/image-3.png)
-![alt text](images/image-4.png)
-![alt text](images/image-5.png)
-![alt text](images/image-6.png)
+**Landing — chat-first workspace with quick actions and file/knowledge modes**
+
+![Landing page](images/landing.png)
+
+**File analysis — evidence, blast radius, compliance mapping, and a downloadable report**
+
+![Security analysis with findings](images/analysis.png)
+
+**Generation — produces a hardened artifact with a clear "generated example" note**
+
+![Hardened Dockerfile generation](images/generation.png)
+
+_All screenshots are captured from the live deployment
+(`https://34-132-100-49.sslip.io`) by the Playwright suite in
+[`e2e/`](e2e/)._
+
 ---
 
 # 📄 License
