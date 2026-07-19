@@ -478,7 +478,7 @@ async def chat(req: ChatRequest):
             })
         return finish({
             "response": (
-                "Hey! I'm AI DevSecOps Sentinel — your senior DevOps & DevSecOps engineer.\n\n"
+                "Hey! I'm **AI DevSecOps Sentinel** — an AI DevOps & DevSecOps engineer.\n\n"
                 "I can help you with:\n\n"
                 "- **File analysis** — upload a Dockerfile, Terraform, Helm chart, "
                 "K8s manifests, CI/CD pipeline, a `.zip` — or just paste a GitHub repo URL\n"

@@ -1206,8 +1206,13 @@ to audit one. Produce the requested artifact directly:
   security, so the user understands what you hardened and why.
 - After the code block, add a brief bullet list of the key hardening
   changes you made.
+- End with exactly this note so the user isn't confused later:
+  "_This is a generated example. My scanners only run on uploaded files
+  or a pasted repo — save this file and upload it if you'd like me to
+  verify it._"
 Do NOT show a repository summary, findings dashboard, risk score, or
 the scanner findings panel — this is a generation task, not an audit.
+Do NOT reference findings from any previously analysed files.
 """
 
     # =====================================================
