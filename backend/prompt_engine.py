@@ -1334,6 +1334,14 @@ ALWAYS show the fix as production-ready corrected code — not placeholder text.
 For secrets and config changes: use # BAD / # FIX diff format.
 Use the detected stack above to adapt analysis focus and recommendations.
 
+DOCUMENTATION FILES:
+If a file is documentation (.md, .markdown, .txt, .rst, README, CHANGELOG,
+LICENSE, CONTRIBUTING) rather than code or config, treat it as documentation:
+summarise its purpose and contents. Do NOT assign it a security risk score,
+severity rating, or frame it as a vulnerability target. Only report a finding
+on a documentation file if a scanner actually flagged one (e.g. a leaked
+secret pasted into a README).
+
 REQUIRED PER FINDING (High and Critical):
 
 Risk: precise sentence using actual values
