@@ -18,19 +18,23 @@ def available() -> bool:
 def _evidence(check: dict) -> str:
     """Real code snippet for the finding, from checkov's code_block.
 
-    Never surfaces raw secret values (CKV_SECRET_* code blocks contain the
-    plaintext secret) — those carry a redacted form in the LLM notes. Falls
-    back to the resource address when no code block is present.
+    Uses the specific offending line (file_line_range start) rather than the
+    whole block — file-level checks (e.g. missing HEALTHCHECK) carry the
+    entire file in code_block, which would dump the file as "evidence".
+    Never surfaces raw secret values (CKV_SECRET_* blocks contain the
+    plaintext secret) — those carry a redacted form in the LLM notes.
     """
     if (check.get("check_id") or "").upper().startswith("CKV_SECRET"):
         return ""
-    lines = []
+    by_line = {}
     for row in check.get("code_block") or []:
         if isinstance(row, (list, tuple)) and len(row) == 2:
             text = str(row[1]).strip()
             if text:
-                lines.append(text)
-    return (" ".join(lines) or str(check.get("resource", "")))[:120]
+                by_line[row[0]] = text
+    target = (check.get("file_line_range") or [0])[0]
+    snippet = by_line.get(target) or next(iter(by_line.values()), "")
+    return (snippet or str(check.get("resource", "")))[:120]
 
 
 def parse_report(report) -> list:

@@ -142,6 +142,20 @@ def test_checkov_evidence_uses_code_block_not_resource():
     assert f["evidence"] == "USER root"           # real code, not "/Dockerfile.USER"
 
 
+def test_checkov_evidence_picks_line_not_whole_file():
+    # File-level checks (missing HEALTHCHECK) carry the whole file in
+    # code_block — evidence must be the offending line, not a file dump.
+    report = {"check_type": "dockerfile", "results": {"failed_checks": [{
+        "check_id": "CKV_DOCKER_2", "check_name": "Ensure HEALTHCHECK",
+        "file_path": "/Dockerfile", "file_line_range": [1, 1],
+        "resource": "/Dockerfile.", "severity": "MEDIUM",
+        "code_block": [[1, "FROM ubuntu:latest\n"], [2, "USER root\n"], [3, "RUN apt-get update\n"]],
+    }]}}
+    f = checkov_scanner.parse_report(report)[0]
+    assert f["evidence"] == "FROM ubuntu:latest"
+    assert "USER root" not in f["evidence"]           # not a whole-file dump
+
+
 def test_checkov_secret_evidence_is_suppressed():
     report = {"check_type": "secrets", "results": {"failed_checks": [{
         "check_id": "CKV_SECRET_2", "check_name": "AWS Access Key",
