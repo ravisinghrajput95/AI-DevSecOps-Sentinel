@@ -1598,6 +1598,11 @@ function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatest
             )}
             <MarkdownBlock text={content} />
             {isLatestAssistant && repo && onSend && <RepoFollowUps onSend={onSend} />}
+            {/* Repo/zip ingest summaries carry findings but no per-file
+                blocks — still offer the report download right away. */}
+            {onSend && scannerFindings?.length > 0 && (
+              <DownloadReportButton blocks={[]} repoCtx={null} uploadedFiles={uploadedFiles || []} scannerFindings={scannerFindings} repo={repo} scannersRun={scannersRun} filesScanned={filesScanned} />
+            )}
           </div>
         )}
       </div>
