@@ -44,6 +44,20 @@ test("upload Terraform → analyze → findings panel + report download", async 
   });
 });
 
+test('"yes audit" on an uploaded file triggers the scan (not a canned reply)', async ({ page }) => {
+  await page.goto("/");
+  await page.locator('input[type="file"]').setInputFiles(TF_FIXTURE);
+  await expect(page.getByText("main.tf").first()).toBeVisible({ timeout: 15_000 });
+
+  // An ack word + an explicit command must run the analysis, not answer
+  // "Ready when you are…". Regression guard for the intent-routing bug.
+  await send(page, "yes audit");
+  await expect(page.getByText(/Verified Scanner Findings/i).first()).toBeVisible({
+    timeout: 90_000,
+  });
+  await expect(page.getByText(/Ready when you are/i)).toHaveCount(0);
+});
+
 test("generation note renders as italic, not literal underscores (#6)", async ({ page }) => {
   await page.goto("/");
   await send(page, "write me a non-vulnerable Dockerfile for a python app");

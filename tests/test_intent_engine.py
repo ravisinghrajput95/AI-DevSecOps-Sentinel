@@ -25,6 +25,15 @@ from backend.intent_engine import detect_intent, is_off_topic
     ("ok cool", "acknowledgement"),
     ("👍", "acknowledgement"),
     ("got it thanks", "acknowledgement"),
+    ("yes", "acknowledgement"),
+    ("sure", "acknowledgement"),
+    ("go ahead", "acknowledgement"),
+    # Ack word + explicit analysis command → NOT an ack, run the analysis
+    ("yes audit", "chat"),
+    ("sure, scan it", "chat"),
+    ("go ahead review this", "chat"),
+    ("ok analyse", "chat"),
+    ("yes run the security review", "chat"),
     # Off-topic
     ("who is virat kohli", "off_topic"),
     ("capital of France", "off_topic"),
