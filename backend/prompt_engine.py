@@ -1083,6 +1083,7 @@ def build_prompt(user_message: str, history: list) -> str:
     # the MODE 3 return. Stops stale findings from a prior scan bleeding
     # onto general-knowledge, redirect, and generation answers.
     memory["_analysis_turn"] = False
+    memory["_generation_turn"] = False
 
     # =====================================================
     # MODE 0.5 — REDIRECT INTENT (topic change)
@@ -1187,6 +1188,7 @@ At the end of your answer, if relevant, offer one line such as:
     # do NOT re-run analysis or attach the old findings panel.
     # =====================================================
     if is_generation_request(user_message):
+        memory["_generation_turn"] = True  # main.py appends the example note
         file_context = build_full_file_context()
         return f"""User Message:
 {user_message}
