@@ -176,6 +176,42 @@ def test_binary_files_still_rejected(name):
     assert fh.is_supported_file(name) is False
 
 
+def test_zip_upload_clears_prior_context(tmp_path, monkeypatch):
+    # A .zip is a whole project — uploading one must reset prior files so a
+    # previous analysis can't contaminate its report.
+    s = activate("default")
+    s.workspace = str(tmp_path / "ws")
+    os.makedirs(s.workspace, exist_ok=True)
+    monkeypatch.setattr(fh, "add_document", lambda **kw: None)
+    monkeypatch.setattr(fh, "run_all_scanners",
+                        lambda _: {"findings": [], "tools_run": [], "tools_missing": []})
+    memory["files"] = [{"name": "old.tf", "content": "x", "topic": "file", "project": "prev"}]
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("proj/main.tf", 'region = "us-east-1"\n')
+    fh.save_uploaded_files([{"name": "proj.zip",
+                             "content": base64.b64encode(buf.getvalue()).decode()}])
+
+    names = {f["name"] for f in memory["files"]}
+    assert "old.tf" not in names                        # prior project cleared
+
+
+def test_loose_file_upload_accumulates(tmp_path, monkeypatch):
+    # Non-zip uploads must still accumulate (multi-file projects).
+    s = activate("default")
+    s.workspace = str(tmp_path / "ws2")
+    os.makedirs(s.workspace, exist_ok=True)
+    monkeypatch.setattr(fh, "add_document", lambda **kw: None)
+    monkeypatch.setattr(fh, "run_all_scanners",
+                        lambda _: {"findings": [], "tools_run": [], "tools_missing": []})
+    memory["files"] = [{"name": "main.tf", "content": "x", "topic": "file", "project": "default"}]
+    fh.save_uploaded_files([{"name": "Dockerfile",
+                             "content": base64.b64encode(b"FROM ubuntu:latest\n").decode()}])
+    names = {f["name"] for f in memory["files"]}
+    assert "main.tf" in names and "Dockerfile" in names  # accumulated, not cleared
+
+
 # =========================================================
 # PER-FILE UPLOAD CAP
 # =========================================================

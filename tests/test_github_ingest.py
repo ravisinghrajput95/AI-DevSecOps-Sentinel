@@ -87,6 +87,25 @@ def clean_state(monkeypatch, tmp_path):
     activate("default")
 
 
+def test_ingest_github_repo_clears_prior_context(clean_state, monkeypatch):
+    # A repo is a self-contained project — a previously-analysed upload must
+    # NOT bleed into its report (the cross-project contamination bug).
+    import backend.github_ingest as gi
+    from backend.memory import memory
+
+    memory["files"] = [{"name": "vulnerable-samples/app.php", "content": "x",
+                        "topic": "file", "project": "vulnerable-samples"}]
+    monkeypatch.setattr(
+        gi.requests, "get",
+        lambda *a, **kw: _FakeResponse(content=_zipball_bytes()),
+    )
+    gi.ingest_github_repo("owner", "repo")
+
+    names = {f["name"] for f in memory["files"]}
+    assert "vulnerable-samples/app.php" not in names   # stale project cleared
+    assert names == {"main.tf", "app/Dockerfile"}       # only the repo remains
+
+
 def test_ingest_github_repo_flattens_wrapper(clean_state, monkeypatch):
     import backend.github_ingest as gi
 

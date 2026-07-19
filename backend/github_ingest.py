@@ -13,8 +13,10 @@ import tempfile
 
 import requests
 
-from backend.file_handler import ingest_zip, workspace_dir
+from backend.file_handler import clear_workspace, ingest_zip, workspace_dir
 from backend.memory import memory
+from backend.rag import clear_rag
+from backend.redaction import clear_secrets
 from backend.scanners import run_all_scanners
 
 # Streaming download cap — protects against huge repos
@@ -100,6 +102,20 @@ def ingest_github_repo(owner: str, repo: str, branch=None) -> dict:
         data = _download_zipball(owner, repo, branch)
     except requests.RequestException as e:
         raise ValueError(f"could not download the repository ({e})")
+
+    # A repo is a complete, self-contained project — reset the session first
+    # so files/findings from a previously analysed upload or repo can't
+    # contaminate this report (cross-project bleed). Done only after the
+    # download succeeds, so a failed fetch never wipes existing context.
+    memory["files"] = []
+    memory["last_topic"] = ""
+    memory["last_files"] = []
+    memory["rag_cache_key"] = None
+    memory["rag_results"] = []
+    memory["scan"] = None
+    clear_workspace()
+    clear_rag()
+    clear_secrets()
 
     tmpdir = tempfile.mkdtemp()
     try:

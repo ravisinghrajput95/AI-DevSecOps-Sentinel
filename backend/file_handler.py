@@ -5,12 +5,12 @@ import base64
 import tempfile
 from backend import metrics
 from backend.logging_setup import get_logger
-from backend.rag import add_document, remove_documents
+from backend.rag import add_document, clear_rag, remove_documents
 from backend.memory import memory
 
 logger = get_logger(__name__)
 from backend.project_memory import project_memory
-from backend.redaction import harvest_secrets
+from backend.redaction import clear_secrets, harvest_secrets
 from backend.scanners import run_all_scanners
 from backend.session import current
 
@@ -305,6 +305,21 @@ def save_uploaded_files(files: list, project_name: str = "default"):
     rejections used to be swallowed and looked like silent failures.
     (Deduplicated files are not rejections and are omitted.)
     """
+    # A .zip is a self-contained project — uploading one starts a fresh
+    # analysis so files/findings from a prior upload or repo can't
+    # contaminate its report. Loose files still accumulate (multi-file
+    # projects). Repo-URL ingestion resets separately in github_ingest.
+    if any(isinstance(f, dict) and str(f.get("name", "")).lower().endswith(".zip") for f in files):
+        memory["files"] = []
+        memory["last_topic"] = ""
+        memory["last_files"] = []
+        memory["rag_cache_key"] = None
+        memory["rag_results"] = []
+        memory["scan"] = None
+        clear_workspace()
+        clear_rag()
+        clear_secrets()
+
     # Build set of already-ingested filenames
     already_ingested = {f.get("name") for f in memory["files"]}
     ingested_any = False
