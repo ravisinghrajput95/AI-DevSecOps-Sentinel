@@ -451,6 +451,14 @@ function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings,
     (byTool[f.tool] = byTool[f.tool] || []).push(f);
   }
   const total = findings.length;
+  // AI-identified findings live in the analyst notes and cover the
+  // scanner-verified ones plus issues the deterministic tools don't flag
+  // (logic/context flaws, weak hardcoded secrets). Report both so the
+  // headline number matches the body.
+  const aiNotesTotal = (blocks || []).reduce(
+    (n, b) => n + (b.type === "file_analysis" ? (b.findings?.length || 0) : 0), 0);
+  const aiDetected = Math.max(0, aiNotesTotal - total);
+  const grandTotal = total + aiDetected;
   const riskLevel = sevCount.CRITICAL > 0 ? "CRITICAL"
     : sevCount.HIGH > 0 ? "HIGH"
     : sevCount.MEDIUM > 0 ? "MEDIUM"
@@ -464,21 +472,30 @@ function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings,
   lines.push(`| **Generated** | ${now} |`);
   lines.push(`| **${isRepo ? "Files indexed & scanned" : "Files scanned"}** | ${fileCount} |`);
   lines.push(`| **Scanners run** | ${(scannersRun || Object.keys(byTool)).join(", ") || "—"} |`);
-  lines.push(`| **Total verified findings** | ${total} |`);
+  lines.push(`| **Scanner-verified findings** | ${total} |`);
+  if (aiDetected > 0) {
+    lines.push(`| **AI-identified findings** | ${aiDetected} |`);
+    lines.push(`| **Total findings** | ${grandTotal} |`);
+  }
   lines.push(`| **Overall risk** | ${riskLevel} |`);
   lines.push(``);
 
   // Executive summary — the part stakeholders actually read.
   lines.push(`## Executive Summary`);
-  if (total === 0) {
-    lines.push(`No verified findings were produced by the deterministic scanners for ${projectName}. This does not guarantee the absence of risk — see the analyst notes below.`);
+  const aiClause = aiDetected > 0
+    ? ` The analyst notes detail **${grandTotal} findings in total**, adding **${aiDetected} AI-identified** issue${aiDetected === 1 ? "" : "s"} the deterministic scanners don't flag (e.g. logic/context flaws and weak hardcoded secrets).`
+    : "";
+  if (total === 0 && aiDetected === 0) {
+    lines.push(`No findings were produced for ${projectName}. This does not guarantee the absence of risk — see the analyst notes below.`);
+  } else if (total === 0) {
+    lines.push(`The deterministic scanners produced **no verified findings** for **${projectName}** (${fileCount} file${fileCount === 1 ? "" : "s"}), but the analyst notes identify **${aiDetected} AI-identified** issue${aiDetected === 1 ? "" : "s"} (logic/context flaws and weak hardcoded secrets the tools don't flag). Overall risk is assessed as **${riskLevel}**.`);
   } else {
     const headline = [];
     if (sevCount.CRITICAL) headline.push(`**${sevCount.CRITICAL} critical**`);
     if (sevCount.HIGH) headline.push(`**${sevCount.HIGH} high**`);
     if (sevCount.MEDIUM) headline.push(`${sevCount.MEDIUM} medium`);
     if (sevCount.LOW) headline.push(`${sevCount.LOW} low`);
-    lines.push(`Analysis of **${projectName}** (${fileCount} file${fileCount === 1 ? "" : "s"}) produced **${total} verified findings** — ${headline.join(", ")}. Overall risk is assessed as **${riskLevel}**. Findings below are tool-verified ground truth; the analyst notes add exploitability, blast radius, and remediation context.`);
+    lines.push(`Analysis of **${projectName}** (${fileCount} file${fileCount === 1 ? "" : "s"}) produced **${total} scanner-verified finding${total === 1 ? "" : "s"}** (tool-confirmed ground truth) — ${headline.join(", ")}.${aiClause} Overall risk is assessed as **${riskLevel}**.`);
   }
   lines.push(``);
 
