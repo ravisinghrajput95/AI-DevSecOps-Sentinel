@@ -87,6 +87,17 @@ ACKNOWLEDGEMENT_PHRASES = {
 # Max word count to even attempt acknowledgement check
 _ACK_MAX_WORDS = 8
 
+# An explicit analysis command anywhere in the message means it is NOT a
+# bare acknowledgement, even when it starts with an ack word. Without this,
+# "yes audit" / "sure, scan it" / "go ahead review this" match the "yes" /
+# "sure" / "go ahead" ack phrases and get answered with a canned prompt
+# instead of running the scan the user just asked for.
+_ANALYSIS_TRIGGERS = (
+    "audit", "analy", "scan", "review", "inspect", "assess",
+    "finding", "secret", "misconfig", "vulnerab", "harden",
+    "full report", "security report",
+)
+
 
 def is_acknowledgement(user_message: str) -> bool:
     """
@@ -97,6 +108,11 @@ def is_acknowledgement(user_message: str) -> bool:
     words = msg.split()
 
     if len(words) > _ACK_MAX_WORDS:
+        return False
+
+    # A message carrying an explicit analysis command is an action request,
+    # not an acknowledgement — let it fall through to file analysis.
+    if any(trigger in msg for trigger in _ANALYSIS_TRIGGERS):
         return False
 
     # Exact match
