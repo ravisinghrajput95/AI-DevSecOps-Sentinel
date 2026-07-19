@@ -172,6 +172,16 @@ jobs:
           [ "$ok" = true ] || { echo "::error::helm upgrade failed after 3 attempts"; exit 1; }
           kubectl rollout status deployment/sentinel-frontend --timeout=10m
 
+      - name: Post-deploy smoke test
+        # The frontend deploy changes nginx routing — this is exactly
+        # where the /scan-status proxy gap would be caught. Validates
+        # the live app through the ingress; no LLM calls.
+        run: |
+          HOST=$(kubectl get ingress sentinel -o jsonpath='{.spec.rules[0].host}' 2>/dev/null || true)
+          if [ -z "$HOST" ]; then echo "no ingress host — skipping smoke test"; exit 0; fi
+          KEY=$(kubectl get secret sentinel-secrets -o jsonpath='{.data.SENTINEL_API_KEY}' | base64 --decode)
+          python3 deploy/smoke_test.py "https://$HOST" "$KEY"
+
       - name: Show pods on failure
         if: failure()
         run: kubectl get pods -o wide && kubectl describe deployment sentinel-frontend | tail -20
