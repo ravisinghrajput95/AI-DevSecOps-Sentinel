@@ -15,7 +15,21 @@ CI → builds and smoke-tests the image → pushes it to Artifact
 Registry (keyless, via Workload Identity Federation) → runs the
 supply-chain gate (SBOM + vuln scan + keyless signature/attestation)
 → `helm upgrade` setting only that component's image tag, gated on
-its own rollout. Nothing deploys from PRs.
+its own rollout → a **post-deploy smoke test** against the live
+ingress. Nothing deploys from PRs.
+
+### Post-deploy smoke test
+
+After each rollout, [`deploy/smoke_test.py`](../deploy/smoke_test.py)
+runs against the **live** `https://<host>` and fails the job if the
+deployed app is broken. It targets the wire-level regressions unit
+tests can't see — nginx routing (e.g. `/scan-status` proxying),
+ingress body-size / timeout limits, TLS, auth — with no LLM calls, so
+it's fast and free. Run it manually too:
+
+```bash
+python3 deploy/smoke_test.py https://<host> "$SENTINEL_API_KEY"
+```
 
 ### Supply-chain security
 
