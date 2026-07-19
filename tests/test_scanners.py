@@ -14,6 +14,8 @@ from backend.scanners import (
     hadolint_scanner,
     semgrep_scanner,
     kubesec_scanner,
+    shellcheck_scanner,
+    actionlint_scanner,
 )
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "vulnerable")
@@ -275,6 +277,65 @@ def test_kubesec_parse_report():
 
 
 # =========================================================
+# SHELLCHECK PARSER (no binary required)
+# =========================================================
+
+SHELLCHECK_REPORT = [
+    {"file": "/ws/deploy.sh", "line": 3, "column": 8, "level": "warning",
+     "code": 2115, "message": "Use \"${var:?}\" to ensure this never expands to /*."},
+    {"file": "/ws/deploy.sh", "line": 3, "column": 8, "level": "info",
+     "code": 2086, "message": "Double quote to prevent globbing and word splitting."},
+    {"file": "/ws/deploy.sh", "line": 4, "column": 1, "level": "error",
+     "code": 2239, "message": "Ensure the shebang uses an absolute path."},
+]
+
+
+def test_shellcheck_parse_report():
+    from backend.scanners import shellcheck_scanner
+    findings = shellcheck_scanner.parse_report(SHELLCHECK_REPORT, "/ws")
+    assert len(findings) == 3
+    assert findings[0]["rule_id"] == "SC2115" and findings[0]["severity"] == "MEDIUM"
+    assert findings[1]["severity"] == "LOW"           # info -> LOW
+    assert findings[2]["severity"] == "HIGH"          # error -> HIGH
+    assert all(f["file"] == "deploy.sh" for f in findings)  # relpath
+    assert findings[0]["guideline"].endswith("SC2115")
+
+
+def test_shellcheck_parse_empty():
+    from backend.scanners import shellcheck_scanner
+    assert shellcheck_scanner.parse_report([], "/ws") == []
+    assert shellcheck_scanner.parse_report(None, "/ws") == []
+
+
+# =========================================================
+# ACTIONLINT PARSER (no binary required)
+# =========================================================
+
+ACTIONLINT_REPORT = [
+    {"message": "\"github.event.pull_request.title\" is potentially untrusted. avoid using it directly",
+     "filepath": "/ws/.github/workflows/ci.yml", "line": 9, "column": 24, "kind": "expression"},
+    {"message": "shellcheck reported issue in this script: SC2086:info",
+     "filepath": "/ws/.github/workflows/ci.yml", "line": 10, "column": 9, "kind": "shellcheck"},
+]
+
+
+def test_actionlint_parse_report():
+    from backend.scanners import actionlint_scanner
+    findings = actionlint_scanner.parse_report(ACTIONLINT_REPORT, "/ws")
+    assert len(findings) == 2
+    # script injection (untrusted expression) must be HIGH
+    assert findings[0]["severity"] == "HIGH" and findings[0]["rule_id"] == "expression"
+    assert findings[1]["severity"] == "MEDIUM"
+    assert all(f["file"] == ".github/workflows/ci.yml" for f in findings)  # relpath
+
+
+def test_actionlint_parse_empty():
+    from backend.scanners import actionlint_scanner
+    assert actionlint_scanner.parse_report([], "/ws") == []
+    assert actionlint_scanner.parse_report(None, "/ws") == []
+
+
+# =========================================================
 # INTEGRATION — requires real scanners on PATH
 # =========================================================
 
@@ -319,6 +380,18 @@ def test_semgrep_finds_fixture_injections(workspace_copy):
 def test_kubesec_finds_privileged_container(workspace_copy):
     findings = kubesec_scanner.scan(workspace_copy)
     assert any(f["rule_id"] == "Privileged" and f["severity"] == "HIGH" for f in findings)
+
+
+@pytest.mark.skipif(not shellcheck_scanner.available(), reason="shellcheck not installed")
+def test_shellcheck_finds_fixture_issues(workspace_copy):
+    findings = shellcheck_scanner.scan(workspace_copy)
+    assert any(f["rule_id"].startswith("SC") for f in findings)
+
+
+@pytest.mark.skipif(not actionlint_scanner.available(), reason="actionlint not installed")
+def test_actionlint_finds_workflow_injection(workspace_copy):
+    findings = actionlint_scanner.scan(workspace_copy)
+    assert any(f["severity"] == "HIGH" and f["rule_id"] == "expression" for f in findings)
 
 
 @pytest.mark.skipif(

@@ -85,6 +85,10 @@ AI ever reasons about them:
 * **hadolint** — Dockerfile best-practice linting
 * **semgrep** — SAST for application code (Python, JS/TS, Java, Go)
 * **kubesec** — Kubernetes manifest risk scoring
+* **shellcheck** — shell script analysis (`.sh`, entrypoints): unquoted
+  expansions, unsafe `rm`/globbing, `curl | bash`, word-splitting bugs
+* **actionlint** — GitHub Actions workflow security: script injection via
+  untrusted `${{ }}` expressions, unpinned actions, shell bugs in `run:`
 * **injection-guard** — built-in prompt-injection detection: flags
   file content that tries to manipulate the AI analysis (instruction
   overrides, finding suppression, fake chat tokens, hidden Unicode)

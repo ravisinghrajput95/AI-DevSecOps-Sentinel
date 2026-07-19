@@ -18,21 +18,24 @@ ARG KUBESEC_VERSION=2.14.2
 ARG TRIVY_VERSION=0.72.0
 ARG CHECKOV_VERSION=3.3.8
 ARG SEMGREP_VERSION=1.170.0
+ARG SHELLCHECK_VERSION=0.10.0
+ARG ACTIONLINT_VERSION=1.7.7
 
 # docker buildx sets this to amd64 / arm64
 ARG TARGETARCH=amd64
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get install -y --no-install-recommends curl ca-certificates xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # ---- release-binary scanners ----------------------------
 # Asset naming differs per project: gitleaks uses x64/arm64,
-# hadolint x86_64/arm64, kubesec amd64/arm64.
+# hadolint x86_64/arm64, kubesec amd64/arm64, shellcheck
+# x86_64/aarch64 (.tar.xz), actionlint amd64/arm64.
 RUN set -eux; \
     case "${TARGETARCH}" in \
-      amd64) GL_ARCH=x64; HL_ARCH=x86_64; KS_ARCH=amd64 ;; \
-      arm64) GL_ARCH=arm64; HL_ARCH=arm64; KS_ARCH=arm64 ;; \
+      amd64) GL_ARCH=x64; HL_ARCH=x86_64; KS_ARCH=amd64; SC_ARCH=x86_64; AL_ARCH=amd64 ;; \
+      arm64) GL_ARCH=arm64; HL_ARCH=arm64; KS_ARCH=arm64; SC_ARCH=aarch64; AL_ARCH=arm64 ;; \
       *) echo "unsupported arch: ${TARGETARCH}" && exit 1 ;; \
     esac; \
     curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${GL_ARCH}.tar.gz" \
@@ -42,6 +45,10 @@ RUN set -eux; \
     chmod +x /usr/local/bin/hadolint; \
     curl -fsSL "https://github.com/controlplaneio/kubesec/releases/download/v${KUBESEC_VERSION}/kubesec_linux_${KS_ARCH}.tar.gz" \
       | tar -xz -C /usr/local/bin kubesec; \
+    curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.${SC_ARCH}.tar.xz" \
+      | tar -xJ -C /usr/local/bin --strip-components=1 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"; \
+    curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${AL_ARCH}.tar.gz" \
+      | tar -xz -C /usr/local/bin actionlint; \
     curl -fsSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
       | sh -s -- -b /usr/local/bin "v${TRIVY_VERSION}"
 
