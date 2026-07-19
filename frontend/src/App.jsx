@@ -451,13 +451,22 @@ function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings,
     (byTool[f.tool] = byTool[f.tool] || []).push(f);
   }
   const total = findings.length;
-  // AI-identified findings live in the analyst notes and cover the
-  // scanner-verified ones plus issues the deterministic tools don't flag
-  // (logic/context flaws, weak hardcoded secrets). Report both so the
-  // headline number matches the body.
-  const aiNotesTotal = (blocks || []).reduce(
-    (n, b) => n + (b.type === "file_analysis" ? (b.findings?.length || 0) : 0), 0);
-  const aiDetected = Math.max(0, aiNotesTotal - total);
+  // Classify each analyst-note finding: if its file:line matches a scanner
+  // finding (±1 line) it's already scanner-verified; otherwise it's an
+  // AI-identified issue the deterministic tools didn't flag (logic/context
+  // flaws, weak hardcoded secrets). This is robust even when scanners emit
+  // many lint findings the AI consolidates — unlike a raw count subtraction.
+  const _base = p => String(p || "").split(/[\\/]/).pop();
+  const scannerKeys = new Set(findings.map(f => `${_base(f.file)}:${f.line || 0}`));
+  let aiDetected = 0;
+  for (const blk of (blocks || [])) {
+    if (blk.type !== "file_analysis") continue;
+    for (const f of (blk.findings || [])) {
+      const m = (f.location || "").match(/([^\s`/:]+):(\d+)/);
+      const key = m ? `${_base(m[1])}:${parseInt(m[2], 10)}` : null;
+      if (!key || !scannerKeys.has(key)) aiDetected++;
+    }
+  }
   const grandTotal = total + aiDetected;
   const riskLevel = sevCount.CRITICAL > 0 ? "CRITICAL"
     : sevCount.HIGH > 0 ? "HIGH"
@@ -475,7 +484,7 @@ function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings,
   lines.push(`| **Scanner-verified findings** | ${total} |`);
   if (aiDetected > 0) {
     lines.push(`| **AI-identified findings** | ${aiDetected} |`);
-    lines.push(`| **Total findings** | ${grandTotal} |`);
+    lines.push(`| **Total distinct findings** | ${grandTotal} |`);
   }
   lines.push(`| **Overall risk** | ${riskLevel} |`);
   lines.push(``);
@@ -483,7 +492,7 @@ function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings,
   // Executive summary — the part stakeholders actually read.
   lines.push(`## Executive Summary`);
   const aiClause = aiDetected > 0
-    ? ` The analyst notes detail **${grandTotal} findings in total**, adding **${aiDetected} AI-identified** issue${aiDetected === 1 ? "" : "s"} the deterministic scanners don't flag (e.g. logic/context flaws and weak hardcoded secrets).`
+    ? ` The analyst notes add **${aiDetected} AI-identified** issue${aiDetected === 1 ? "" : "s"} the deterministic scanners don't flag (e.g. logic/context flaws and weak hardcoded secrets), for **${grandTotal} distinct findings** in total.`
     : "";
   if (total === 0 && aiDetected === 0) {
     lines.push(`No findings were produced for ${projectName}. This does not guarantee the absence of risk — see the analyst notes below.`);
