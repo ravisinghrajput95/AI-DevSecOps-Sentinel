@@ -633,13 +633,16 @@ async def chat(req: ChatRequest):
 
     answer = await asyncio.to_thread(_analyse)
 
+    # Only a genuine file-security-analysis turn (build_prompt MODE 3)
+    # carries the findings panel. General-knowledge answers, topic
+    # redirects and generation requests must NOT re-surface the previous
+    # scan's findings.
     scan = memory.get("scan") or {}
-    return finish({
-        "response": answer,
-        "findings": scan.get("findings", []),
-        "scanners": {
+    payload = {"response": answer, "repo": ingested_repo}
+    if memory.get("_analysis_turn"):
+        payload["findings"] = scan.get("findings", [])
+        payload["scanners"] = {
             "run": scan.get("tools_run", []),
             "missing": scan.get("tools_missing", []),
-        },
-        "repo": ingested_repo,
-    })
+        }
+    return finish(payload)
