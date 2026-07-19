@@ -645,4 +645,8 @@ async def chat(req: ChatRequest):
             "run": scan.get("tools_run", []),
             "missing": scan.get("tools_missing", []),
         }
+        # Real ingested-file count (ground truth for the report — a repo
+        # analysis turn carries no `repo` object, so the client can't
+        # otherwise tell 92 files from the single repo sidebar entry).
+        payload["files_scanned"] = len(memory["files"])
     return finish(payload)
