@@ -442,6 +442,7 @@ function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings,
 
   // Ground-truth severity counts from the verified scanner findings.
   const SEV = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
+  const sevRank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
   const sevCount = Object.fromEntries(SEV.map(s => [s, 0]));
   const byTool = {};
   for (const f of findings) {
@@ -478,14 +479,35 @@ function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings,
     if (sevCount.MEDIUM) headline.push(`${sevCount.MEDIUM} medium`);
     if (sevCount.LOW) headline.push(`${sevCount.LOW} low`);
     lines.push(`Analysis of **${projectName}** (${fileCount} file${fileCount === 1 ? "" : "s"}) produced **${total} verified findings** — ${headline.join(", ")}. Overall risk is assessed as **${riskLevel}**. Findings below are tool-verified ground truth; the analyst notes add exploitability, blast radius, and remediation context.`);
-    if (sevCount.CRITICAL || sevCount.HIGH) {
-      const top = findings.filter(f => ["CRITICAL", "HIGH"].includes((f.severity || "").toUpperCase())).slice(0, 5);
-      lines.push(``);
-      lines.push(`**Top priorities:**`);
-      for (const f of top) lines.push(`- **[${(f.severity || "").toUpperCase()}]** ${f.title} — \`${f.file}:${f.line}\` (${f.tool})`);
-    }
   }
   lines.push(``);
+
+  // Top 5 Actions — the prioritised, prescriptive to-do the reader acts on.
+  // Distinct rules first (worst severity, then how widely they fire), each
+  // as one action, capped at 4, always closed with a re-scan step so the
+  // remediation loop is explicit.
+  if (total > 0) {
+    lines.push(`## Top 5 Actions`);
+    const ruleMap = {};
+    for (const f of findings) {
+      const key = f.rule_id || f.title;
+      if (!ruleMap[key]) ruleMap[key] = { ...f, count: 0, files: new Set() };
+      ruleMap[key].count++;
+      if (f.file) ruleMap[key].files.add(f.file);
+    }
+    const ranked = Object.values(ruleMap).sort((a, b) =>
+      (sevRank[(a.severity || "INFO").toUpperCase()] - sevRank[(b.severity || "INFO").toUpperCase()]) || (b.count - a.count));
+    let n = 1;
+    for (const r of ranked.slice(0, 4)) {
+      const scope = r.files.size > 1
+        ? ` — ${r.files.size} files`
+        : (r.file ? ` — \`${r.file}${r.line ? ":" + r.line : ""}\`` : "");
+      lines.push(`${n}. **[${(r.severity || "INFO").toUpperCase()}]** ${r.title}${scope}`);
+      n++;
+    }
+    lines.push(`${n}. Re-scan after applying fixes to verify remediation.`);
+    lines.push(``);
+  }
 
   // Risk summary table
   lines.push(`## Risk Summary`);
@@ -501,7 +523,6 @@ function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings,
   // Full verified findings, grouped by tool then collapsed by rule so a
   // rule that fires on 18 files reads as one prioritised row (with its
   // locations) instead of 18 near-identical rows — a Staff-level report.
-  const sevRank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
   const esc = (s) => String(s || "").replace(/\|/g, "\\|");
   if (total > 0) {
     lines.push(`## Verified Scanner Findings`);
@@ -713,15 +734,20 @@ function renderTokens(text) {
 
 function InlineText({ text }) {
   if (!text) return null;
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g);
+  // Underscore emphasis (_italic_) is matched only at word boundaries so
+  // snake_case identifiers (auto_create_subnetworks, var.project_id) are
+  // never mangled — important for a DevOps tool, and makes the renderer
+  // robust to models that emit _italic_ instead of *italic*.
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|(?<![\w])_(?!\s)[^_]+?(?<!\s)_(?![\w]))/g);
   return (
     <>
       {parts.map((part, i) => {
+        if (!part) return null;
         if (part.startsWith("`") && part.endsWith("`"))
           return <code key={i} style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: "3px", padding: "1px 5px", fontFamily: "monospace", fontSize: "12px", color: "#79c0ff" }}>{part.slice(1, -1)}</code>;
         if (part.startsWith("**") && part.endsWith("**"))
           return <strong key={i} style={{ color: "#e6edf3" }}>{part.slice(2, -2)}</strong>;
-        if (part.startsWith("*") && part.endsWith("*"))
+        if (part.length > 2 && ((part.startsWith("*") && part.endsWith("*")) || (part.startsWith("_") && part.endsWith("_"))))
           return <em key={i} style={{ color: "#c9d1d9" }}>{part.slice(1, -1)}</em>;
         return <span key={i}>{part}</span>;
       })}
