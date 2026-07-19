@@ -131,6 +131,29 @@ def test_checkov_parse_single_block():
     assert findings[1]["severity"] == "HIGH"  # real severity kept
 
 
+def test_checkov_evidence_uses_code_block_not_resource():
+    report = {"check_type": "dockerfile", "results": {"failed_checks": [{
+        "check_id": "CKV_DOCKER_8", "check_name": "Ensure last USER is not root",
+        "file_path": "/Dockerfile", "file_line_range": [8, 8],
+        "resource": "/Dockerfile.USER", "severity": "MEDIUM",
+        "code_block": [[8, "USER root\n"]],
+    }]}}
+    f = checkov_scanner.parse_report(report)[0]
+    assert f["evidence"] == "USER root"           # real code, not "/Dockerfile.USER"
+
+
+def test_checkov_secret_evidence_is_suppressed():
+    report = {"check_type": "secrets", "results": {"failed_checks": [{
+        "check_id": "CKV_SECRET_2", "check_name": "AWS Access Key",
+        "file_path": "/Dockerfile", "file_line_range": [5, 5],
+        "resource": "0a1b2c3d", "severity": "HIGH",
+        "code_block": [[5, "ENV AWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE\n"]],
+    }]}}
+    f = checkov_scanner.parse_report(report)[0]
+    assert f["evidence"] == ""                    # never leak the raw secret
+    assert "AKIA" not in f["evidence"]
+
+
 def test_checkov_parse_multi_framework_list():
     findings = checkov_scanner.parse_report([CHECKOV_REPORT, CHECKOV_REPORT])
     assert len(findings) == 4

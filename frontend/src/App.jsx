@@ -877,7 +877,12 @@ function parseStructuredResponse(text, uploadedFiles = []) {
       const body = section.slice(titleMatch[0].length);
       blocks.push(_analysisBlock(titleMatch[1].trim(), body));
     }
-    return blocks;
+    // Drop empty file blocks — models sometimes emit a bare
+    // "## File Analysis: <project>" header (the repo/zip name) with no body,
+    // which would render as an empty "File:" section in the report/UI.
+    return blocks.filter(b => b.type !== "file_analysis"
+      || b.purpose || b.findings?.length || b.positive
+      || b.recommendations || b.configurations || b.technologies);
   }
 
   // Resilience: some analyses (often shell scripts) carry the finding
