@@ -199,7 +199,9 @@ Specific correct configurations with real values.
 ### Security Findings
 
 #### Critical [CATEGORY] [Confidence: HIGH]
-**[Finding Title]**
+**Command Injection via system()**
+(a specific bold title naming the actual issue — NOT the literal words
+"Finding Title", and do not keep the square brackets)
 Location: filename:line
 
 ```lang

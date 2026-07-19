@@ -903,7 +903,10 @@ function splitFindingItems(raw, level) {
 }
 
 function parseFindingItem(raw, level) {
-  const titleMatch          = raw.match(/\*\*\[([^\]]+)\]\*\*/);
+  // Accept both "**[Title]**" (prompt template) and a bare bold title line
+  // "**Title**" (what models often emit) so findings aren't labelled "Finding".
+  const titleMatch          = raw.match(/\*\*\[([^\]]+)\]\*\*/)
+                           || raw.match(/^\s*\*\*([^*\n]{3,120}?)\*\*\s*$/m);
   const locationMatch       = raw.match(/Location:\s*`?([^\n`]+)`?/i);
   const categoryMatch       = raw.match(/\[(SECRETS|MISCONFIGURATION|VULNERABLE-DEPENDENCY|CI-CD|KUBERNETES|DOCKER|TERRAFORM|COMPLIANCE|NETWORK)\]/i);
   const confidenceMatch     = raw.match(/\[Confidence:\s*(HIGH|MEDIUM|LOW)\]/i);
@@ -938,9 +941,20 @@ function parseFindingItem(raw, level) {
     .replace(/# BAD[\s\S]*?# FIX[\s\S]*/gi, "")
     .trim();
 
+  // Fallback title so a finding never renders as a generic "Finding":
+  // prefer an explicit title, else name it from the category, else the
+  // first clause of the risk sentence.
+  let title = titleMatch ? titleMatch[1].trim() : "";
+  if (!title) {
+    const cat = (categoryMatch?.[1] || "").toUpperCase();
+    if (cat === "SECRETS") title = "Hardcoded Secret";
+    else if (riskMatch) title = riskMatch[1].trim().split(/(?<=\w)\./)[0].slice(0, 90);
+    else if (cat) title = cat.charAt(0) + cat.slice(1).toLowerCase().replace(/-/g, " ");
+  }
+
   return {
     level, raw,
-    title:            titleMatch ? titleMatch[1] : null,
+    title:            title || null,
     location:         locationMatch ? locationMatch[1].trim() : null,
     category:         categoryMatch ? categoryMatch[1].toUpperCase() : null,
     confidence:       confidenceMatch ? confidenceMatch[1].toUpperCase() : null,
