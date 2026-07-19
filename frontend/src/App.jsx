@@ -1015,12 +1015,40 @@ function deriveRepoContext(blocks, uploadedFiles, scannerFindings) {
 // surface beyond secrets. When such a file is analysed and nothing was
 // flagged, a Critical/High/Medium/Low risk dashboard is misleading — so we
 // show a documentation note instead of the severity grid.
-const DOC_EXTS = [".md", ".markdown", ".txt", ".rst", ".adoc"];
-const DOC_NAMES = ["license", "changelog", "readme", "contributing", "code_of_conduct", "authors", "notice", "codeowners", "maintainers"];
+const DOC_EXTS = [
+  ".md", ".markdown", ".mdx", ".mkd", ".mdown",
+  ".txt", ".text", ".rst", ".adoc", ".asciidoc",
+  ".wiki", ".mediawiki", ".org", ".tex", ".latex",
+  ".rtf", ".textile", ".creole", ".pod",
+];
+// Well-known documentation filenames (matched on the base name, so variants
+// like LICENSE-MIT / COPYING.LESSER / CHANGELOG-1.0 are covered).
+const DOC_NAMES = [
+  "readme", "license", "licence", "copying", "unlicense",
+  "changelog", "changes", "history", "news", "releases",
+  "contributing", "code_of_conduct", "authors", "contributors",
+  "maintainers", "owners", "codeowners", "humans",
+  "notice", "acknowledgments", "acknowledgements", "credits",
+  "security", "support", "funding", "governance", "roadmap",
+  "todo", "faq", "glossary", "install", "disclaimer",
+  "copyright", "patents", "thanks",
+];
+// Scannable code/config extensions — a file with one of these is never a doc,
+// even if its name starts with a doc word (licensecheck.py, readme_gen.js).
+const CODE_EXTS = [
+  ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".java",
+  ".rb", ".php", ".rs", ".c", ".cpp", ".cc", ".h", ".hpp", ".cs", ".kt",
+  ".scala", ".swift", ".sh", ".bash", ".zsh", ".ps1", ".tf", ".tfvars",
+  ".hcl", ".yaml", ".yml", ".json", ".json5", ".toml", ".ini", ".cfg",
+  ".conf", ".properties", ".env", ".xml", ".gradle", ".groovy", ".sql",
+  ".lock", ".dockerfile", ".pl", ".lua", ".r", ".dart",
+];
 function isDocFile(name) {
-  const n = (name || "").toLowerCase().split("/").pop();
-  const base = n.split(".")[0];
-  return DOC_EXTS.some(e => n.endsWith(e)) || DOC_NAMES.includes(base);
+  const n = (name || "").toLowerCase().split(/[\\/]/).pop();
+  if (DOC_EXTS.some(e => n.endsWith(e))) return true;   // README.md, notes.rst
+  if (CODE_EXTS.some(e => n.endsWith(e))) return false;  // licensecheck.py = code
+  const base = n.split(".")[0];                          // COPYING.LESSER -> copying
+  return DOC_NAMES.some(d => base === d || base.startsWith(d + "-") || base.startsWith(d + "_"));
 }
 
 function buildDashboard(blocks) {
