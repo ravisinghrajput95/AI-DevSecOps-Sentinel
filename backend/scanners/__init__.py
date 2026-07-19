@@ -21,6 +21,8 @@ from backend.scanners import (
     hadolint_scanner,
     semgrep_scanner,
     kubesec_scanner,
+    shellcheck_scanner,
+    actionlint_scanner,
     injection_scanner,
 )
 
@@ -31,6 +33,8 @@ SCANNERS = [
     hadolint_scanner,    # Dockerfile best practices
     semgrep_scanner,     # application code SAST
     kubesec_scanner,     # Kubernetes manifest risk
+    shellcheck_scanner,  # shell script analysis
+    actionlint_scanner,  # GitHub Actions workflow security
     injection_scanner,   # prompt-injection attempts (built-in)
 ]
 

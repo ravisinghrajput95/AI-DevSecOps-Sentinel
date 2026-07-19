@@ -74,8 +74,8 @@ print(f"Smoke test against {BASE}")
 # 1. health + all scanners present
 st, _, txt = call("GET", "/health", key="")
 h = json.loads(txt) if st == 200 else {}
-check("health 200 + 7 scanners",
-      st == 200 and sum(h.get("scanners", {}).values()) == 7,
+check("health 200 + 9 scanners",
+      st == 200 and sum(h.get("scanners", {}).values()) == 9,
       f"status={st} scanners={h.get('scanners')}")
 
 # 2. /scan-status is proxied and returns JSON (regression guard for the
