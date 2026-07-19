@@ -47,6 +47,12 @@ spec:
           env:
             - name: SENTINEL_LLM_MODEL
               value: {{ .Values.backend.env.llmModel | quote }}
+            - name: SENTINEL_LLM_MAX_TOKENS
+              value: {{ .Values.backend.env.llmMaxTokens | quote }}
+            {{- if .Values.backend.env.llmBaseUrl }}
+            - name: OPENAI_BASE_URL
+              value: {{ .Values.backend.env.llmBaseUrl | quote }}
+            {{- end }}
             - name: SENTINEL_MAX_REQUEST_MB
               value: {{ .Values.backend.env.maxRequestMb | quote }}
             - name: SENTINEL_RATE_LIMIT_PER_MIN

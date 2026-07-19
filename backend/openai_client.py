@@ -19,5 +19,11 @@ _client = None
 def get_client() -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # OPENAI_BASE_URL lets us point at any OpenAI-compatible endpoint
+        # (an OpenAI-compat gateway like LiteLLM/OpenRouter, an Anthropic
+        # or Bedrock proxy, a self-hosted model) without a code change —
+        # so switching the model tomorrow is pure config. Unset => the
+        # real OpenAI API, exactly as before.
+        base_url = os.getenv("OPENAI_BASE_URL") or None
+        _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url=base_url)
     return _client

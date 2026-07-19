@@ -10,6 +10,14 @@ logger = get_logger(__name__)
 
 LLM_MODEL = os.environ.get("SENTINEL_LLM_MODEL", "gpt-4o")
 
+# Completion cap. Heavier models writing long reports can hit the default,
+# so it's tunable per deployment without a code change. Falls back to 4096
+# (the previous hard-coded value) if unset or unparseable.
+try:
+    LLM_MAX_TOKENS = int(os.environ.get("SENTINEL_LLM_MAX_TOKENS", "4096"))
+except ValueError:
+    LLM_MAX_TOKENS = 4096
+
 # Old analyses in history can be huge (full repo reports) — cap each
 # item so history (12 messages max) can't push the request over the
 # model's TPM limit: 12 x 2500 chars ~ 7.5k tokens worst case
@@ -63,7 +71,7 @@ def ask_openai(prompt: str, history: list = []) -> str:
             model=LLM_MODEL,
             messages=messages,
             temperature=0.2,
-            max_tokens=4096
+            max_tokens=LLM_MAX_TOKENS
         )
         metrics.LLM_LATENCY.observe(time.time() - start)
         usage = getattr(response, "usage", None)
