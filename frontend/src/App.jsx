@@ -1958,7 +1958,10 @@ I'm your senior DevOps & DevSecOps AI engineer. Here is what I can do:
 - CI/CD, Kubernetes, Docker, Terraform, Helm, ArgoCD, GitOps
 - DevSecOps, shift-left, zero trust, supply chain security
 
-Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
+**Three ways in:**
+- **Upload files** — code (any language), IaC, Dockerfiles, CI configs, or a \`.zip\` — via the sidebar
+- **Paste a public GitHub repo URL** in the chat box — I'll download, scan, and report on the whole repo
+- **Just ask** — DevOps / DevSecOps questions, no files needed`
   };
 
   const [messages, setMessages] = useState(
