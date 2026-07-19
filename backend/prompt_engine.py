@@ -1133,6 +1133,46 @@ Do NOT reference any uploaded files unless the user explicitly asks about them.
 """
 
     # =====================================================
+    # MODE 2.5 — GENERATION REQUEST (write / rewrite an artifact)
+    # "share a non-vulnerable Dockerfile", "rewrite this secure",
+    # "generate a hardened k8s manifest". Produce the artifact —
+    # do NOT re-run analysis or attach the old findings panel.
+    # Checked BEFORE the no-files and general-knowledge modes: a
+    # generation request is valid with or without uploaded files, and
+    # both of those modes would otherwise swallow it (it also matches
+    # is_general_question), so the example note would never fire.
+    # =====================================================
+    if is_generation_request(user_message):
+        memory["_generation_turn"] = True  # main.py appends the example note
+        file_context = build_full_file_context()
+        return f"""User Message:
+{user_message}
+
+Uploaded file context (may be empty if the user pasted content inline):
+{file_context}
+
+Instructions:
+
+The user is asking you to WRITE or REWRITE a config/file artifact
+(Dockerfile, Kubernetes manifest, Terraform, CI workflow, etc.), not
+to audit one. Produce the requested artifact directly:
+- Output the complete, ready-to-use file as a single fenced code block.
+- Apply security best practices (pinned non-root images, least
+  privilege, no secrets, healthchecks, resource limits as relevant).
+- Add short inline comments only where a change materially improves
+  security, so the user understands what you hardened and why.
+- After the code block, add a brief bullet list of the key hardening
+  changes you made.
+- End with exactly this note so the user isn't confused later:
+  "_This is a generated example. My scanners only run on uploaded files
+  or a pasted repo — save this file and upload it if you'd like me to
+  verify it._"
+Do NOT show a repository summary, findings dashboard, risk score, or
+the scanner findings panel — this is a generation task, not an audit.
+Do NOT reference findings from any previously analysed files.
+"""
+
+    # =====================================================
     # MODE 1 — NO FILES — PLAIN CHAT MODE
     # =====================================================
     if not uploaded_files_exist:
@@ -1179,42 +1219,6 @@ Do NOT show repository summary, findings, dashboard, risk score, or attack surfa
 If the detected stack is relevant to the question, you may tailor your answer to that stack.
 At the end of your answer, if relevant, offer one line such as:
 "I also have your uploaded files ready — let me know if you would like me to run a full security audit."
-"""
-
-    # =====================================================
-    # MODE 2.5 — GENERATION REQUEST (write / rewrite an artifact)
-    # "share a non-vulnerable Dockerfile", "rewrite this secure",
-    # "generate a hardened k8s manifest". Produce the artifact —
-    # do NOT re-run analysis or attach the old findings panel.
-    # =====================================================
-    if is_generation_request(user_message):
-        memory["_generation_turn"] = True  # main.py appends the example note
-        file_context = build_full_file_context()
-        return f"""User Message:
-{user_message}
-
-Uploaded file context (may be empty if the user pasted content inline):
-{file_context}
-
-Instructions:
-
-The user is asking you to WRITE or REWRITE a config/file artifact
-(Dockerfile, Kubernetes manifest, Terraform, CI workflow, etc.), not
-to audit one. Produce the requested artifact directly:
-- Output the complete, ready-to-use file as a single fenced code block.
-- Apply security best practices (pinned non-root images, least
-  privilege, no secrets, healthchecks, resource limits as relevant).
-- Add short inline comments only where a change materially improves
-  security, so the user understands what you hardened and why.
-- After the code block, add a brief bullet list of the key hardening
-  changes you made.
-- End with exactly this note so the user isn't confused later:
-  "_This is a generated example. My scanners only run on uploaded files
-  or a pasted repo — save this file and upload it if you'd like me to
-  verify it._"
-Do NOT show a repository summary, findings dashboard, risk score, or
-the scanner findings panel — this is a generation task, not an audit.
-Do NOT reference findings from any previously analysed files.
 """
 
     # =====================================================

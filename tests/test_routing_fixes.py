@@ -67,6 +67,26 @@ def test_generation_request_does_not_flag_analysis_turn():
     assert "WRITE or REWRITE" in prompt  # generation prompt, not audit
 
 
+def test_generation_routes_to_mode_2_5_without_files():
+    # A generation request must hit MODE 2.5 (produce artifact + set the
+    # _generation_turn flag) even when no files are uploaded — otherwise
+    # the no-files/general-knowledge modes swallow it and the example
+    # note never fires.
+    memory["files"] = []
+    prompt = pe.build_prompt("write me a non-vulnerable Dockerfile for a python app", [])
+    assert memory.get("_generation_turn") is True
+    assert memory.get("_analysis_turn") is False
+    assert "WRITE or REWRITE" in prompt
+
+
+def test_plain_and_knowledge_messages_are_not_generation_turns():
+    memory["files"] = []
+    for q in ("hello", "what is a dockerfile"):
+        memory["_generation_turn"] = False
+        pe.build_prompt(q, [])
+        assert memory.get("_generation_turn") is False, q
+
+
 def test_generate_all_fixes_is_not_a_generation_request():
     # The 'Generate All Fixes' quick action must still run analysis
     assert pe.is_generation_request("generate all fixes") is False
