@@ -57,12 +57,23 @@ def _is_ignored(path: str) -> bool:
     return any(part in IGNORED_DIRS for part in path.split("/"))
 
 SUPPORTED_EXTENSIONS = [
-    ".py", ".java", ".js", ".ts",
-    ".yaml", ".yml", ".tf", ".tfvars",
-    ".json", ".xml", ".sh", ".md",
-    ".txt", ".properties", ".conf",
-    ".ini", ".toml", ".env", ".hcl",
-    ".gradle", ".lock", ".mod", ".sum"
+    # ---- application source code (semgrep SAST + LLM reasoning) ----
+    ".py", ".pyi",
+    ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue", ".svelte",
+    ".java", ".kt", ".kts", ".scala", ".groovy", ".clj", ".cljs",
+    ".go", ".rs", ".rb", ".php", ".phtml",
+    ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".cs",
+    ".swift", ".m", ".mm", ".dart", ".ex", ".exs", ".erl",
+    ".pl", ".pm", ".lua", ".r", ".jl", ".hs", ".ml",
+    # ---- shells / scripts (shellcheck) ----
+    ".sh", ".bash", ".zsh", ".ksh", ".ps1",
+    # ---- IaC / config / data ----
+    ".yaml", ".yml", ".tf", ".tfvars", ".hcl",
+    ".json", ".json5", ".xml", ".toml", ".ini", ".conf", ".cfg",
+    ".properties", ".env", ".sql", ".gradle",
+    ".lock", ".mod", ".sum",
+    # ---- docs ----
+    ".md", ".markdown", ".rst", ".adoc", ".txt",
 ]
 
 SPECIAL_FILES = [

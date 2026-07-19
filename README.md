@@ -350,18 +350,20 @@ The assistant correlates explanations with uploaded repository context whenever 
 
 # 📂 Supported File Types
 
-* Dockerfile
-* `.tf`
-* `.yaml`
-* `.yml`
-* `.json`
-* `.sh`
-* `pom.xml`
-* Helm charts
-* Kubernetes manifests
-* GitHub Actions workflows
-* ZIP repositories
-* Public GitHub repositories — paste a repo URL in chat (supports `/tree/<branch>`, 50 MB limit)
+**Application code** (SAST via semgrep + AI reasoning):
+`.py` · `.js` `.jsx` `.ts` `.tsx` · `.java` `.kt` `.scala` `.groovy` ·
+`.go` · `.rs` · `.rb` · `.php` · `.c` `.cpp` `.h` `.hpp` · `.cs` ·
+`.swift` · `.dart` · `.ex`/`.exs` · `.pl` · `.lua` · `.r` · and more
+
+**Infrastructure & config**: Dockerfile · `.tf`/`.tfvars`/`.hcl` ·
+`.yaml`/`.yml` · Helm charts · Kubernetes manifests · `.json` · `.toml` ·
+`.ini` · `.env` · `.properties` · `.xml` · `.sql`
+
+**Shell & CI/CD**: `.sh`/`.bash`/`.zsh`/`.ps1` · GitHub Actions workflows ·
+Jenkinsfile · `.gitlab-ci.yml` · `pom.xml`/`.gradle`
+
+**Bundles**: `.zip` repositories · public GitHub repos — paste a repo URL
+in chat (supports `/tree/<branch>`)
 
 ---
 
