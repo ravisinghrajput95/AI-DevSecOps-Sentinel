@@ -11,4 +11,5 @@ paths = [
   '''tests/.*''',
   '''evals/ai_eval\.py''',
   '''deploy/smoke_test\.py''',
+  '''e2e/fixtures/.*''',
 ]
