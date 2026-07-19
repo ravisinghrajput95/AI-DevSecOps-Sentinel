@@ -1432,10 +1432,11 @@ function RepoFollowUps({ onSend }) {
 function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatestAssistant, scannerFindings, scannersRun, repo }) {
   const isUser = role === "user";
 
-  // Only parse structured file analysis for the LATEST assistant message.
-  // Previous messages render as plain markdown to avoid the dashboard
-  // re-appearing on every follow-up answer.
-  const parsed = !isUser && !isLoading && isLatestAssistant
+  // Parse structured file analysis for EVERY assistant message that has
+  // it — each analysis keeps its rich dashboard/cards in the scrollback.
+  // (Previously gated on isLatestAssistant, which collapsed earlier
+  // analyses into raw markdown the moment the user sent another prompt.)
+  const parsed = !isUser && !isLoading
     ? parseStructuredResponse(content)
     : null;
 
@@ -1464,7 +1465,7 @@ function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatest
           </div>
         ) : hasFileBlocks ? (
           <div>
-            {isLatestAssistant && (
+            {scannerFindings?.length > 0 && (
               <ScannerFindingsPanel findings={scannerFindings} scannersRun={scannersRun} />
             )}
             {repoCtx?.memoryCategories?.length > 0 && (
@@ -1487,7 +1488,7 @@ function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatest
           </div>
         ) : (
           <div>
-            {isLatestAssistant && (
+            {scannerFindings?.length > 0 && (
               <ScannerFindingsPanel findings={scannerFindings} scannersRun={scannersRun} />
             )}
             <MarkdownBlock text={content} />

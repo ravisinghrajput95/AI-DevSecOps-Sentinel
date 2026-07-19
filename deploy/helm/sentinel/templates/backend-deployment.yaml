@@ -63,21 +63,27 @@ spec:
               value: {{ if .Values.ingress.enabled }}"2"{{ else }}"1"{{ end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+          # Blocking work runs on worker threads so /health stays
+          # responsive during scans, but keep the probes tolerant as
+          # defense-in-depth: a slow health check must not evict the pod
+          # from the Service (readiness) or SIGKILL it (liveness).
           readinessProbe:
             httpGet:
               path: /health
               port: http
             initialDelaySeconds: 10
             periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /health
               port: http
             initialDelaySeconds: 30
             periodSeconds: 30
-            # Scans peg the CPU for minutes — be slow to kill
             timeoutSeconds: 10
-            failureThreshold: 5
+            # ~5 min of continuous failure before a restart
+            failureThreshold: 10
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

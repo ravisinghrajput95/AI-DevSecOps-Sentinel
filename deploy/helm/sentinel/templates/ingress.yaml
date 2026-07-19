@@ -9,6 +9,13 @@ metadata:
   labels:
     {{- include "sentinel.labels" . | nindent 4 }}
   annotations:
+    # Uploads arrive base64 in the JSON body; the ingress-nginx default
+    # (1 MB) 413s anything larger BEFORE it reaches the backend. Keep
+    # this above the backend's SENTINEL_MAX_REQUEST_MB.
+    nginx.ingress.kubernetes.io/proxy-body-size: {{ .Values.ingress.proxyBodySize | default "100m" | quote }}
+    # Repo ingest + full scan can take minutes; default 60s -> 504.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: {{ .Values.ingress.proxyTimeout | default "300" | quote }}
+    nginx.ingress.kubernetes.io/proxy-send-timeout: {{ .Values.ingress.proxyTimeout | default "300" | quote }}
     {{- if $tls.enabled }}
     # cert-manager watches this and issues/renews the cert into
     # the tls secretName below via the named ClusterIssuer.

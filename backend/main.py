@@ -1,5 +1,6 @@
 # backend/main.py
 
+import asyncio
 import concurrent.futures
 import os
 import secrets as pysecrets
@@ -363,9 +364,17 @@ async def chat(req: ChatRequest):
     # Rejected uploads (too large, unsupported, zip bomb/slip,
     # empty archive) are surfaced to the user via finish()
     # instead of failing silently.
+    #
+    # Runs on a worker thread (to_thread copies the session
+    # ContextVar) so the file scan can't block the single event
+    # loop — otherwise /health stalls and the liveness probe
+    # SIGKILLs the pod mid-scan.
     # =====================================================
 
-    upload_warnings = save_uploaded_files(req.files) if req.files else []
+    upload_warnings = (
+        await asyncio.to_thread(save_uploaded_files, req.files)
+        if req.files else []
+    )
 
     def finish(payload: dict) -> dict:
         """Prepend any upload rejections to the outgoing response."""
@@ -614,10 +623,15 @@ async def chat(req: ChatRequest):
     # frontend can render them independently of the prose.
     # =====================================================
 
-    prompt = build_prompt(user_message, req.history)
-    # Code-level redaction: the model sees raw file contents, so its
-    # answer can echo secrets regardless of prompt rules — scrub them.
-    answer = scrub_secrets(ask_openai(prompt, req.history))
+    # Prompt build (RAG embedding call) + the LLM call are blocking and
+    # slow — run them on a worker thread so the event loop stays free for
+    # health checks. Code-level redaction: the model sees raw file
+    # contents, so scrub secrets from its answer regardless of prompt rules.
+    def _analyse():
+        prompt = build_prompt(user_message, req.history)
+        return scrub_secrets(ask_openai(prompt, req.history))
+
+    answer = await asyncio.to_thread(_analyse)
 
     scan = memory.get("scan") or {}
     return finish({
