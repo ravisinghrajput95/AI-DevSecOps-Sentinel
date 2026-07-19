@@ -498,19 +498,31 @@ function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings,
   lines.push(`| **Total** | **${total}** |`);
   lines.push(``);
 
-  // Full verified findings, grouped by tool — comprehensive ground truth.
+  // Full verified findings, grouped by tool then collapsed by rule so a
+  // rule that fires on 18 files reads as one prioritised row (with its
+  // locations) instead of 18 near-identical rows — a Staff-level report.
+  const sevRank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
+  const esc = (s) => String(s || "").replace(/\|/g, "\\|");
   if (total > 0) {
     lines.push(`## Verified Scanner Findings`);
-    lines.push(`Deterministic tool output — every finding is reproducible, not AI-inferred.`);
+    lines.push(`Deterministic tool output — every finding is reproducible, not AI-inferred. Repeated rules are collapsed with their locations.`);
     lines.push(``);
     for (const tool of Object.keys(byTool).sort()) {
       const fs = byTool[tool];
-      lines.push(`### ${tool} (${fs.length})`);
-      lines.push(`| Severity | Location | Rule | Finding |`);
-      lines.push(`|----------|----------|------|---------|`);
-      for (const f of fs) {
-        const ev = f.evidence ? ` — \`${String(f.evidence).replace(/\|/g, "\\|")}\`` : "";
-        lines.push(`| ${(f.severity || "INFO").toUpperCase()} | \`${f.file}:${f.line}\` | ${f.rule_id || ""} | ${String(f.title || "").replace(/\|/g, "\\|")}${ev} |`);
+      // group by rule_id
+      const byRule = {};
+      for (const f of fs) (byRule[f.rule_id || f.title] = byRule[f.rule_id || f.title] || []).push(f);
+      const rules = Object.values(byRule).sort((a, b) =>
+        (sevRank[(a[0].severity || "INFO").toUpperCase()] - sevRank[(b[0].severity || "INFO").toUpperCase()]) || (b.length - a.length));
+      lines.push(`### ${tool} — ${fs.length} finding${fs.length === 1 ? "" : "s"} across ${rules.length} rule${rules.length === 1 ? "" : "s"}`);
+      lines.push(`| Severity | Rule | Count | Finding | Locations |`);
+      lines.push(`|----------|------|-------|---------|-----------|`);
+      for (const grp of rules) {
+        const f = grp[0];
+        const locs = grp.map(x => `\`${x.file}:${x.line}\``);
+        const locStr = locs.slice(0, 4).join(", ") + (locs.length > 4 ? ` +${locs.length - 4} more` : "");
+        const ev = f.evidence ? ` (e.g. \`${esc(f.evidence)}\`)` : "";
+        lines.push(`| ${(f.severity || "INFO").toUpperCase()} | ${esc(f.rule_id)} | ${grp.length} | ${esc(f.title)}${ev} | ${locStr} |`);
       }
       lines.push(``);
     }

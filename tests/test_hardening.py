@@ -318,3 +318,39 @@ def test_changed_file_replaces_stale_same_named(monkeypatch):
     fh.save_uploaded_files([{"name": "main.tf", "content": base64.b64encode(b'new = 2').decode()}])
     tf = [f for f in memory["files"] if f["name"] == "main.tf"]
     assert len(tf) == 1 and tf[0]["content"] == "new = 2"
+
+
+def test_ignored_dirs_removed_from_workspace_before_scan(tmp_path, monkeypatch):
+    # A zip that ships .venv/.git must NOT leave them on disk for scanners
+    import backend.file_handler as fhh
+    from backend.session import activate
+    monkeypatch.setattr(fhh, "add_document", lambda **k: None)
+    sess = activate("zzz")
+    sess.workspace = str(tmp_path / "ws")
+    os.makedirs(sess.workspace)
+    z = make_zip([
+        ("proj/main.tf", b'resource "a" "b" {}'),
+        ("proj/.venv/lib/pip/junk.py", b"import os"),
+        ("proj/.git/config", b"[core]"),
+        ("proj/node_modules/x/index.js", b"x"),
+    ])
+    import io as _io
+    buf = _io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for n, d in [("proj/main.tf", b'resource "a" "b" {}'),
+                     ("proj/.venv/lib/junk.py", b"import os"),
+                     ("proj/.git/config", b"[core]")]:
+            zf.writestr(n, d)
+    buf.seek(0)
+    zp = str(tmp_path / "u.zip")
+    open(zp, "wb").write(buf.getvalue())
+    fhh.ingest_zip(zp, project_name="proj")
+    walked = []
+    for root, _dirs, files in os.walk(sess.workspace):
+        for f in files:
+            walked.append(os.path.join(root, f))
+    assert any("main.tf" in w for w in walked)
+    assert not any(".venv" in w for w in walked), "scanner would still see .venv"
+    assert not any(".git" in w for w in walked)
+    from backend.session import destroy
+    destroy("zzz")
