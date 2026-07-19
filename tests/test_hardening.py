@@ -161,6 +161,21 @@ def test_zip_within_limits_extracts(tmp_path):
     assert (tmp_path / "ok.txt").read_text() == "fine"
 
 
+@pytest.mark.parametrize("name", [
+    "app.go", "app.php", "app.rb", "app.rs", "main.c", "main.cpp",
+    "App.java", "app.kt", "app.swift", "app.cs", "index.tsx", "app.scala",
+    "svc.groovy", "handler.ex", "util.lua", "script.pl", "Dockerfile",
+    "main.tf", "app.py", "index.js",
+])
+def test_common_languages_are_supported(name):
+    assert fh.is_supported_file(name) is True
+
+
+@pytest.mark.parametrize("name", ["image.png", "binary.exe", "photo.jpg", "blob.bin"])
+def test_binary_files_still_rejected(name):
+    assert fh.is_supported_file(name) is False
+
+
 # =========================================================
 # PER-FILE UPLOAD CAP
 # =========================================================

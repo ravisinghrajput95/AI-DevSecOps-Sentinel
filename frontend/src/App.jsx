@@ -1847,7 +1847,7 @@ function Sidebar({ onPromptClick, uploadedFiles, onFilesAdded, onFileRemove }) {
           <AttachIcon /> Click or drop files
         </button>
         <input ref={fileInputRef} type="file" multiple style={{ display: "none" }}
-          accept=".zip,.yaml,.yml,.tf,.tfvars,.json,.py,.js,.ts,.sh,.xml,.md,.txt,.conf,.ini,.toml,.env,.hcl,.gradle,.properties,.go,.mod,.sum,.lock,.requirements"
+          accept=".zip,.py,.pyi,.js,.jsx,.mjs,.cjs,.ts,.tsx,.vue,.svelte,.java,.kt,.kts,.scala,.groovy,.clj,.go,.rs,.rb,.php,.c,.h,.cpp,.cc,.cxx,.hpp,.cs,.swift,.m,.dart,.ex,.exs,.pl,.lua,.r,.sh,.bash,.zsh,.ps1,.yaml,.yml,.tf,.tfvars,.hcl,.json,.json5,.xml,.toml,.ini,.conf,.cfg,.properties,.env,.sql,.gradle,.mod,.sum,.lock,.md,.markdown,.rst,.adoc,.txt"
           onChange={e => { onFilesAdded(Array.from(e.target.files)); e.target.value = ""; }} />
         {uploadedFiles.length > 0 && (
           <div style={{ marginTop: "7px", display: "flex", flexDirection: "column", gap: "4px", maxHeight: "130px", overflowY: "auto" }}>
@@ -1855,7 +1855,7 @@ function Sidebar({ onPromptClick, uploadedFiles, onFilesAdded, onFileRemove }) {
           </div>
         )}
         <div style={{ marginTop: "5px", fontSize: "9px", color: "#484f58", lineHeight: "1.5" }}>
-          .zip · Dockerfile · .tf · .yaml · .json · .py · .go · .js · Jenkinsfile
+          Code (.py, .go, .js/.ts, .java, .rb, .php, .rs, .c/.cpp, …) · IaC (.tf, Dockerfile, .yaml) · CI (Jenkinsfile, workflows) · .zip · repo URL
         </div>
       </div>
 
