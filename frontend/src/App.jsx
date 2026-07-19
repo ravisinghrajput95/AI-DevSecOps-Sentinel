@@ -427,17 +427,18 @@ function useSessionPersistence(messages, uploadedFiles, history, repoCtx) {
 // Works entirely client-side — no backend needed.
 // =========================================================
 
-function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun) {
+function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun, filesScanned) {
   const now = new Date().toISOString().split("T")[0];
-  const isRepo = !!repo;
+  const isRepo = !!(repo || (repoCtx?.repoName || "").includes("/"));
   const projectName = repo?.name || repoCtx?.repoName || uploadedFiles[0]?.name || "Project";
   const findings = scannerFindings || [];
   const lines = [];
 
-  // Real scanned-file count: repo file count, else unique files in the
-  // findings, else the uploaded file count (never the parsed-block count).
+  // Real scanned-file count: the backend's ground-truth count first,
+  // then repo file count, then unique files in findings, then uploads —
+  // never the parsed-block count (which showed "1" for a repo).
   const filesFromFindings = new Set(findings.map(f => f.file).filter(Boolean)).size;
-  const fileCount = repo?.files ?? (uploadedFiles?.length || filesFromFindings || 0);
+  const fileCount = filesScanned ?? repo?.files ?? (filesFromFindings || uploadedFiles?.length || 0);
 
   // Ground-truth severity counts from the verified scanner findings.
   const SEV = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
@@ -573,8 +574,8 @@ function generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings,
   return lines.join("\n");
 }
 
-function downloadReport(blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun) {
-  const md = generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun);
+function downloadReport(blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun, filesScanned) {
+  const md = generateMarkdownReport(blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun, filesScanned);
   const blob = new Blob([md], { type: "text/markdown" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -1171,11 +1172,11 @@ function FollowUpSuggestions({ blocks, onSend }) {
 // Additive — does not change any existing component.
 // =========================================================
 
-function DownloadReportButton({ blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun }) {
+function DownloadReportButton({ blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun, filesScanned }) {
   const [downloaded, setDownloaded] = useState(false);
 
   const handleDownload = () => {
-    downloadReport(blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun);
+    downloadReport(blocks, repoCtx, uploadedFiles, scannerFindings, repo, scannersRun, filesScanned);
     setDownloaded(true);
     setTimeout(() => setDownloaded(false), 3000);
   };
@@ -1521,7 +1522,7 @@ function RepoFollowUps({ onSend }) {
 // CHAT MESSAGE
 // =========================================================
 
-function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatestAssistant, scannerFindings, scannersRun, repo }) {
+function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatestAssistant, scannerFindings, scannersRun, repo, filesScanned }) {
   const isUser = role === "user";
 
   // Parse structured file analysis for EVERY assistant message that has
@@ -1576,7 +1577,7 @@ function ChatMessage({ role, content, isLoading, onSend, uploadedFiles, isLatest
                 : <MarkdownBlock key={i} text={block.content} />
             )}
             {onSend && <FollowUpSuggestions blocks={parsed} onSend={onSend} />}
-            {onSend && <DownloadReportButton blocks={parsed} repoCtx={repoCtx} uploadedFiles={uploadedFiles || []} scannerFindings={scannerFindings} repo={repo} scannersRun={scannersRun} />}
+            {onSend && <DownloadReportButton blocks={parsed} repoCtx={repoCtx} uploadedFiles={uploadedFiles || []} scannerFindings={scannerFindings} repo={repo} scannersRun={scannersRun} filesScanned={filesScanned} />}
           </div>
         ) : (
           <div>
@@ -1950,6 +1951,7 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
           scannerFindings: data.findings || [],
           scannersRun: data.scanners?.run || [],
           repo: data.repo || null,
+          filesScanned: data.files_scanned ?? data.repo?.files ?? null,
         };
         return u;
       });
@@ -2051,6 +2053,7 @@ Upload a file or GitHub \`.zip\` using the sidebar, or just ask a question.`
                   scannerFindings={msg.scannerFindings}
                   scannersRun={msg.scannersRun}
                   repo={msg.repo}
+                  filesScanned={msg.filesScanned}
                 />
               );
             })}
