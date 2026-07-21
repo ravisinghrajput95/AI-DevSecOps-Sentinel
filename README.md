@@ -515,8 +515,10 @@ Released under the [MIT License](LICENSE) — free to use, modify, and
 distribute. Built as a learning and portfolio project exploring
 DevSecOps, Platform Engineering, and AI-assisted security workflows.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) to get set up and
-[CHANGELOG.md](CHANGELOG.md) for what's changed.
+See [CONTRIBUTING.md](CONTRIBUTING.md) to get set up,
+[CHANGELOG.md](CHANGELOG.md) for what's changed, and
+[docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) for the reasoning
+behind the architecture, its known limits, and lessons from field testing.
 
 ---
 
