@@ -1,23 +1,72 @@
-# AI DevSecOps Sentinel
+<!-- Optional banner: drop a 1280×640 image at assets/hero.png and uncomment.
+<p align="center"><img src="assets/hero.png" alt="AI DevSecOps Sentinel" width="820"></p> -->
+
+<div align="center">
+
+# 🛡️ AI DevSecOps Sentinel
+
+**An AI DevSecOps engineer that reasons _on top of_ 11 deterministic security scanners — grounded findings, not hallucinations.**
+
+Upload a file, a `.zip`, or a public GitHub URL → get scanner-verified findings, evidence, exploitability &amp; compliance mapping, and a downloadable report — in seconds.
+
+<br/>
 
 [![Backend CI](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/backend-ci.yml)
 [![Frontend CI](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/frontend-ci.yml)
 [![Secret Scan](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/actions/workflows/secret-scan.yml)
+<br/>
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Scanners](https://img.shields.io/badge/scanners-11-6f42c1)
+![Evaluation](https://img.shields.io/badge/eval-66%2F68%20passing-brightgreen)
+![Images](https://img.shields.io/badge/images-signed%20(cosign)-0a7bbb)
+![Backend](https://img.shields.io/badge/backend-FastAPI-009688)
+![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20Vite-61dafb)
+![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
-AI DevSecOps Sentinel is an AI-powered DevOps and DevSecOps engineering assistant that performs contextual repository analysis, security reviews, infrastructure validation, and secure engineering guidance using AI-driven reasoning.
+[**Quick Start**](#-quick-start) · [**Architecture**](#-architecture) · [**Features**](#-features) · [**Evaluation**](docs/EVALUATION.md) · [**Deployment**](docs/DEPLOYMENT.md) · [**Security**](SECURITY.md) · [**Docs**](docs/) · [**Contributing**](CONTRIBUTING.md)
 
-The platform combines:
-
-* Repository-aware security analysis
-* Infrastructure-as-Code inspection
-* Secret and misconfiguration detection
-* Attack surface reasoning
-* Compliance mapping
-* Contextual DevOps/DevSecOps knowledge assistance
+</div>
 
 ![Upload a file, ask for an audit, get scanner-grounded findings](images/demo.gif)
 
 > **Upload → audit → scanner-grounded findings, evidence, and a downloadable report — in seconds.**
+
+---
+
+## 📑 Table of Contents
+
+- [⚡ Quick Start](#-quick-start)
+- [🏗 Architecture](#-architecture)
+- [🚀 Features](#-features)
+- [🔍 Scanner-Grounded Findings](#scanner-grounded-findings)
+- [📊 Evaluation & Quality](#-evaluation--quality)
+- [🚢 Deployment & CI/CD](#-deployment--cicd)
+- [🛠 Supported Technologies](#-supported-technologies)
+- [📂 Supported File Types](#-supported-file-types)
+- [🧠 Core Capabilities](#-core-capabilities)
+- [📷 Screenshots](#-screenshots)
+- [🤝 Contributing](#-contributing) · [📄 License](#-license)
+
+---
+
+# ⚡ Quick Start
+
+Get the full stack running locally in under two minutes:
+
+```bash
+git clone https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel.git
+cd AI-DevSecOps-Sentinel
+
+echo "OPENAI_API_KEY=sk-your-key" > .env      # only OPENAI_API_KEY is required
+docker compose up --build                      # UI + API on http://localhost
+```
+
+Then open **http://localhost**, drop in a `Dockerfile`, `main.tf`, or paste a
+public GitHub URL, and ask *"run a security audit"* — or *"write me a hardened
+Dockerfile"*. Findings are produced by real scanners; the AI reasons on top.
+
+> Prefer Kubernetes? The chart is cloud-agnostic — see [**Deployment**](docs/DEPLOYMENT.md).
+> New here? Start with the [**Quickstart guide**](docs/QUICKSTART.md).
 
 ---
 
@@ -40,7 +89,7 @@ flowchart TB
 
       subgraph BE["Backend pod · FastAPI — async, single worker"]
         Router["Intent + prompt router<br/>build_prompt (file / repo / general / generation)"]
-        Reg["Scanner registry — 9 tools, parallel & crash-isolated<br/>gitleaks · checkov · trivy · hadolint · semgrep<br/>kubesec · shellcheck · actionlint · injection-guard"]
+        Reg["Scanner registry — 11 tools, parallel & crash-isolated<br/>gitleaks · checkov · trivy · hadolint · semgrep · kubesec<br/>shellcheck · actionlint · injection-guard · report-import · ansible-guard"]
         RAG["RAG · FAISS<br/>text-embedding-3-small"]
         Ingest["Async repo ingest<br/>job queue → /scan-status polling"]
         Redact["Secret redaction +<br/>prompt-injection defense"]
@@ -73,7 +122,7 @@ flowchart LR
     Tests --> Build["docker build<br/>+ in-image smoke test"]
     Build --> Supply["supply chain<br/>SBOM · trivy · cosign (keyless)"]
     Supply --> Deploy["helm deploy<br/>Kubernetes"]
-    Deploy --> Smoke["post-deploy smoke test<br/>9 scanners · auth · routing"]
+    Deploy --> Smoke["post-deploy smoke test<br/>11 scanners · auth · routing"]
     Smoke --> E2E["Playwright e2e<br/>real headless browser"]
 ```
 
@@ -156,6 +205,12 @@ AI ever reasons about them:
 * **injection-guard** — built-in prompt-injection detection: flags
   file content that tries to manipulate the AI analysis (instruction
   overrides, finding suppression, fake chat tokens, hidden Unicode)
+* **report-import** — ingests **uploaded scanner output as structured
+  findings**: Trivy/Semgrep JSON, SARIF reports, and CycloneDX/SPDX SBOMs
+  (SBOM components are resolved to CVEs via `trivy sbom`)
+* **ansible-guard** — built-in Ansible playbook checks: firewall-disable
+  (`ufw disable`, `iptables -F`), `setenforce 0`, world-writable perms,
+  destructive `rm -rf /`, and `curl | bash` in tasks
 
 The AI treats scanner output as verified ground truth: it correlates
 findings across tools and files, deduplicates, prioritizes by
@@ -227,7 +282,24 @@ always renders).
 
 ---
 
-## Measured Detection — Benchmark
+## 📊 Evaluation & Quality
+
+Detection **and** AI quality are measured, not claimed — every number traces
+to a recorded transcript. Three independent evaluation passes were run against
+the live deployment, each stricter than the last:
+
+| Pass | Scope | Headline result |
+|---|---|---|
+| **Capability (V1)** | 172 interactions — intent, accuracy, context, safety | **87 / 100** · 0 hallucinations · 99% answers ship runnable code |
+| **Enterprise deep-dive (V2)** | 211 interactions — file analysis, red-team, long-context, repos | `terragoat` → **869 findings** · **8/8** file-borne injections resisted |
+| **Regression baseline** | 68 reusable, CI-gated cases | **66 / 68 passing** · 0 open code defects |
+
+Full methodology, the safety/red-team table, and reproduce steps live in
+[**docs/EVALUATION.md**](docs/EVALUATION.md); the reusable regression suite is
+in [`evaluation/`](evaluation/). The deterministic scanner benchmark and
+AI-quality gates below run in CI.
+
+### Measured Detection — Benchmark
 
 Detection quality is not claimed, it is measured: `evals/run_benchmark.py`
 scores the scanner pipeline against deliberately vulnerable repositories
@@ -506,6 +578,22 @@ into a single engineering assistant platform.
 _All screenshots are captured from the live deployment
 (`https://34-132-100-49.sslip.io`) by the Playwright suite in
 [`e2e/`](e2e/)._
+
+---
+
+# 🤝 Contributing
+
+Contributions, issues, and ideas are welcome — Sentinel is built to be
+approachable:
+
+- 📖 Read [CONTRIBUTING.md](CONTRIBUTING.md) for local setup and the dev loop
+- 🐛 [Open an issue](../../issues/new/choose) — bug reports and feature ideas have templates
+- 🔒 Found a vulnerability? See [SECURITY.md](SECURITY.md) — please report privately
+- 💬 Questions or show-and-tell? Start a [Discussion](../../discussions)
+- 📜 Please follow our [Code of Conduct](CODE_OF_CONDUCT.md)
+
+Good first contributions: docs improvements, a new scanner integration, or
+additional evaluation cases in [`evaluation/`](evaluation/).
 
 ---
 

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/security/advisories/new
+    about: Please report vulnerabilities privately — do not open a public issue.
+  - name: 💬 Questions & discussion
+    url: https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/discussions
+    about: Ask questions, share use cases, and discuss ideas.
+  - name: 📖 Documentation
+    url: https://github.com/ravisinghrajput95/AI-DevSecOps-Sentinel/tree/main/docs
+    about: Architecture, deployment, API, security, and evaluation docs.

@@ -1,0 +1,61 @@
+name: 🐛 Bug report
+description: Something isn't working as expected
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! Please search existing issues first.
+        For **security vulnerabilities**, do NOT use this form — see [SECURITY.md](../../SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I upload a Terraform file and ask for an audit, …
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps (and a sample file/repo URL if relevant).
+      value: |
+        1. Go to '…'
+        2. Upload '…'
+        3. Ask '…'
+        4. See error
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Backend / API
+        - Frontend / UI
+        - Scanner integration
+        - Deployment (Docker Compose / Helm / GKE)
+        - CI/CD
+        - Docs
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running it?
+      options: ["Docker Compose", "Kubernetes / Helm", "Local dev (uvicorn + vite)", "Other"]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste the `X-Request-Id` and any backend logs. Automatically formatted as code.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Version / image tag
+      placeholder: "e.g. main @ <commit sha>"
