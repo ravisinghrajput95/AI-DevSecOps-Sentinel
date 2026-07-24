@@ -40,6 +40,12 @@ def _fresh_memory() -> dict:
         "rag_cache_key": None,
         "rag_results": [],
         "scan": None,
+        # Server-side conversation memory (see backend/conversation.py):
+        # authoritative turn log + a rolling summary of turns that have
+        # aged out of the verbatim window, so facts persist past ~6 turns.
+        "conv_turns": [],       # list of [user, assistant] pairs
+        "conv_summary": "",     # compressed summary of older turns
+        "conv_summary_covers": 0,  # how many leading turns the summary covers
     }
 
 

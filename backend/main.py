@@ -712,6 +712,8 @@ async def chat(req: ChatRequest):
         clear_rag()
         clear_workspace()
         clear_secrets()
+        from backend.conversation import reset as reset_conversation
+        reset_conversation()
         return {
             "response": "Context cleared. Upload new files or ask a fresh question."
         }
@@ -742,6 +744,11 @@ async def chat(req: ChatRequest):
             "uploaded files or a pasted repo — save this file and upload "
             "it if you'd like me to verify it._"
         )
+
+    # Persist this turn to server-side conversation memory so its facts
+    # survive past the verbatim window in long chats.
+    from backend.conversation import record_turn
+    record_turn(user_message, answer)
 
     # Only a genuine file-security-analysis turn (build_prompt MODE 3)
     # carries the findings panel. General-knowledge answers, topic

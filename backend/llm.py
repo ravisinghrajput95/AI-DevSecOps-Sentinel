@@ -39,18 +39,28 @@ def ask_openai(prompt: str, history: list = []) -> str:
 
     # =========================================================
     # INJECT CONVERSATION HISTORY
+    # Prefer the authoritative server-side turn log + rolling
+    # summary (retains facts past the verbatim window). Fall
+    # back to the client-sent history[-6:] only when no
+    # server-side turns exist yet (e.g. a stateless caller).
     # =========================================================
 
-    for item in history[-6:]:
-        if isinstance(item, (list, tuple)) and len(item) == 2:
-            messages.append({
-                "role": "user",
-                "content": str(item[0])[:MAX_HISTORY_ITEM_CHARS]
-            })
-            messages.append({
-                "role": "assistant",
-                "content": str(item[1])[:MAX_HISTORY_ITEM_CHARS]
-            })
+    from backend.conversation import build_context_messages
+
+    context_messages = build_context_messages()
+    if context_messages:
+        messages.extend(context_messages)
+    else:
+        for item in history[-6:]:
+            if isinstance(item, (list, tuple)) and len(item) == 2:
+                messages.append({
+                    "role": "user",
+                    "content": str(item[0])[:MAX_HISTORY_ITEM_CHARS]
+                })
+                messages.append({
+                    "role": "assistant",
+                    "content": str(item[1])[:MAX_HISTORY_ITEM_CHARS]
+                })
 
     # =========================================================
     # INJECT CURRENT PROMPT
