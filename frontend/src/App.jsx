@@ -841,15 +841,20 @@ function RecommendationList({ text }) {
   for (const raw of (text || "").split("\n")) {
     const line = raw.trim().replace(/^[-*]\s+/, "");
     if (!line) continue;
-    // Drop the "Ordered by ..." caption — the section header already labels it.
+    // Drop the "Ordered by ..." caption and bare markdown dividers.
     if (/^ordered by/i.test(line)) continue;
-    const m = line.match(/^\[([A-Za-z]+)\]\s*\[Exploitability:\s*([A-Za-z]+)\]\s*(.+)$/i);
+    if (/^[-*_]{3,}$/.test(line)) continue;
+    // Severity is required; the [Exploitability: X] tag is OPTIONAL —
+    // file-analysis recommendations come as "[HIGH] <action> at file:line"
+    // with no exploitability tag, and must still render as a styled row.
+    const m = line.match(/^\[([A-Za-z]+)\]\s*(?:\[Exploitability:\s*([A-Za-z]+)\]\s*)?(.+)$/i);
     if (m) {
       let action = m[3].trim();
       let loc = null;
       const locM = action.match(/\s+(?:at|in)\s+(\S+?:\d+)\s*$/i);
       if (locM) { loc = locM[1]; action = action.slice(0, locM.index).trim(); }
-      rows.push({ key: key++, sev: m[1].toUpperCase(), exploit: m[2].toUpperCase(), action, loc });
+      rows.push({ key: key++, sev: m[1].toUpperCase(),
+                  exploit: m[2] ? m[2].toUpperCase() : null, action, loc });
     } else {
       rows.push({ key: key++, text: line });
     }
@@ -866,12 +871,14 @@ function RecommendationList({ text }) {
           borderRadius: "6px", padding: "6px 10px"
         }}>
           <SeverityBadge level={r.sev} />
-          <span style={{
-            fontSize: "9.5px", fontWeight: "600", fontFamily: "monospace", flexShrink: 0,
-            color: EXPLOIT_COLORS[r.exploit] || "#8b949e",
-            border: `1px solid ${(EXPLOIT_COLORS[r.exploit] || "#8b949e")}44`,
-            borderRadius: "4px", padding: "1px 6px"
-          }}>EXPLOIT {r.exploit}</span>
+          {r.exploit && (
+            <span style={{
+              fontSize: "9.5px", fontWeight: "600", fontFamily: "monospace", flexShrink: 0,
+              color: EXPLOIT_COLORS[r.exploit] || "#8b949e",
+              border: `1px solid ${(EXPLOIT_COLORS[r.exploit] || "#8b949e")}44`,
+              borderRadius: "4px", padding: "1px 6px"
+            }}>EXPLOIT {r.exploit}</span>
+          )}
           <span style={{ color: "#e6edf3", fontSize: "13px", flex: "1 1 auto", minWidth: "140px" }}>
             <InlineText text={r.action} />
           </span>
@@ -975,7 +982,11 @@ function parseStructuredResponse(text, uploadedFiles = []) {
 }
 
 function extractSection(text, heading) {
-  const regex = new RegExp(`###\\s+${heading}[^\n]*\\n([\\s\\S]*?)(?=###|$)`, "i");
+  // Headings come back as ## or ### depending on the model, so match
+  // either level and stop at the next heading of EITHER level — otherwise
+  // a "## Cross-File Observations" fails to terminate the preceding
+  // "### Recommendations Summary" and its content bleeds in.
+  const regex = new RegExp(`#{2,3}\\s+${heading}[^\\n]*\\n([\\s\\S]*?)(?=\\n#{2,3}\\s|$)`, "i");
   const match = text.match(regex);
   return match ? match[1].trim() : null;
 }
