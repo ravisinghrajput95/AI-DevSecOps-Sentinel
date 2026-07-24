@@ -11,11 +11,19 @@ Welcome to the AI DevSecOps Sentinel documentation. This folder contains compreh
 
 ### Understanding the Project
 - [Architecture](ARCHITECTURE.md) - System design, components, and data flow
+- [How It Works](how-it-works.md) - The request lifecycle, step by step
+- [Design Decisions](DESIGN-DECISIONS.md) - Rationale, tradeoffs, and limitations
+- [Roadmap](ROADMAP.md) - Shipped, known limits, and future directions
 - [Features](../README.md#-features) - Feature overview (in the main README)
 
 ### Development
+- [Developer Guide](developer-guide.md) - Run it locally, layout, add a scanner
 - [API Reference](API.md) - REST endpoints, headers, and status codes
 - [Contributing](../CONTRIBUTING.md) - Local setup, tests, CI, and conventions
+
+### Quality & Security
+- [Evaluation](EVALUATION.md) - How we measure detection, AI quality, and safety
+- [Security Model](SECURITY.md) - Redaction, injection defense, supply chain
 
 ### Support
 - [Troubleshooting](TROUBLESHOOTING.md) - Common issues and fixes
