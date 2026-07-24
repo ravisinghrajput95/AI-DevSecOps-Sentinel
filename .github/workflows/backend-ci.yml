@@ -52,6 +52,23 @@ jobs:
     runs-on: ubuntu-latest
     env:
       OPENAI_API_KEY: sk-ci-dummy-key
+    # pgvector Postgres for the RAG backend tests. DATABASE_URL is set
+    # ONLY on the dedicated step below — not job-wide — so the rest of
+    # the suite keeps running against the in-process backend it assumes.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: sentinel
+          POSTGRES_PASSWORD: sentinel
+          POSTGRES_DB: sentinel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sentinel -d sentinel"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
@@ -102,6 +119,15 @@ jobs:
 
       - name: Run test suite
         run: python -m pytest tests/ -v
+
+      # pgvector RAG tests, against the service container above. The
+      # test's own fixture builds the schema (init_stores) and stubs
+      # embeddings, so this needs only a reachable Postgres. In the run
+      # above these same tests skip (no DATABASE_URL).
+      - name: Run pgvector RAG tests (live Postgres)
+        env:
+          DATABASE_URL: postgresql://sentinel:sentinel@localhost:5432/sentinel
+        run: python -m pytest tests/test_rag_pgvector.py -v
 
   # =========================================================
   # DOCKER IMAGE — only after tests pass, only on main pushes
