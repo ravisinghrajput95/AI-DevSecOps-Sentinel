@@ -414,6 +414,29 @@ async def chat(req: ChatRequest):
     # pasted URL was skipped because you also attached a zip").
     info_notes: list[str] = []
 
+    # Honesty: if files were attached but NONE were accepted (e.g. an image
+    # or other binary), say so plainly. Otherwise the model answers the
+    # message with generic guidance that reads like a real analysis of a
+    # file it never actually saw.
+    if req.files and len(upload_warnings) >= len(req.files):
+        bad = ", ".join(f"**{w['name']}**" for w in upload_warnings)
+        info_notes.append(
+            f"⚠️ I couldn't read {bad}. I can only analyze text-based files "
+            "(code, IaC, config, logs) — not images, diagrams, or other "
+            "binaries. Anything below is general guidance, **not** an "
+            "analysis of that file."
+        )
+
+    # Flag silent truncation so findings are never assumed complete.
+    truncated = [f["name"] for f in memory["files"] if f.get("truncated")]
+    if truncated:
+        shown = ", ".join(f"**{n}**" for n in truncated[:5])
+        more = " …" if len(truncated) > 5 else ""
+        info_notes.append(
+            f"ℹ️ Analyzed the first 20,000 characters of: {shown}{more}. "
+            "Very large files may have findings beyond that point."
+        )
+
     def finish(payload: dict) -> dict:
         """Prepend any upload rejections + info notes to the response."""
         prefix = ""

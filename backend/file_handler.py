@@ -69,7 +69,7 @@ SUPPORTED_EXTENSIONS = [
     ".sh", ".bash", ".zsh", ".ksh", ".ps1",
     # ---- IaC / config / data ----
     ".yaml", ".yml", ".tf", ".tfvars", ".hcl",
-    ".json", ".json5", ".xml", ".toml", ".ini", ".conf", ".cfg",
+    ".json", ".json5", ".sarif", ".xml", ".toml", ".ini", ".conf", ".cfg",
     ".properties", ".env", ".sql", ".gradle",
     ".lock", ".mod", ".sum",
     # ---- docs ----
@@ -219,7 +219,8 @@ def ingest_zip(zip_path, project_name=None):
                 "name": relative_path,
                 "content": content[:20000],      # full real content
                 "topic": "repository",
-                "project": project_name
+                "project": project_name,
+                "truncated": len(content) > 20000,
             })
             memory["files"] = files
 
@@ -286,7 +287,8 @@ def ingest_single_file(filepath, original_filename, project_name="default"):
         "name": original_filename,
         "content": content[:20000],
         "topic": "file",
-        "project": project_name
+        "project": project_name,
+        "truncated": len(content) > 20000,
     })
     memory["files"] = files
 
