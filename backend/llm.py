@@ -75,13 +75,23 @@ def ask_openai(prompt: str, history: list = []) -> str:
     # CALL OPENAI
     # =========================================================
 
-    start = time.time()
-    try:
+    # A large prompt (a repo-sized analysis) plus a big max_tokens value
+    # RESERVES that many output tokens against the account's per-minute
+    # token budget — so on a low OpenAI tier the request can 429 before any
+    # work is done, even as a single call. On a rate-limit, retry once with
+    # a much smaller completion reservation: same prompt, far less reserved
+    # budget, so a big repo question still gets answered instead of erroring.
+    # Only fires on 429 — normal requests are completely unaffected.
+    RATE_LIMIT_RETRY_TOKENS = int(
+        os.environ.get("SENTINEL_RATE_LIMIT_RETRY_TOKENS", "2048"))
+
+    def _complete(max_tokens: int):
+        start = time.time()
         response = get_client().chat.completions.create(
             model=LLM_MODEL,
             messages=messages,
             temperature=0.2,
-            max_tokens=LLM_MAX_TOKENS
+            max_tokens=max_tokens,
         )
         metrics.LLM_LATENCY.observe(time.time() - start)
         usage = getattr(response, "usage", None)
@@ -90,15 +100,27 @@ def ask_openai(prompt: str, history: list = []) -> str:
             metrics.LLM_TOKENS.labels(kind="completion").inc(usage.completion_tokens or 0)
         return response.choices[0].message.content
 
+    try:
+        return _complete(LLM_MAX_TOKENS)
     except Exception as e:
-        logger.error("OpenAI call failed: %s", e)
         is_rate = "rate_limit" in str(e) or "429" in str(e)
         metrics.LLM_ERRORS.labels(reason="rate_limit" if is_rate else "other").inc()
-        if is_rate:
-            return (
-                "⚠️ The AI request hit the OpenAI rate limit — the prompt was "
-                "too large or requests came too fast. The verified scanner "
-                "findings above are unaffected. Try again in a minute, or "
-                "narrow the question to specific files."
-            )
-        return "An error occurred while contacting the AI. Please try again."
+        if not is_rate:
+            logger.error("OpenAI call failed: %s", e)
+            return "An error occurred while contacting the AI. Please try again."
+
+        # Retry once with a small reservation to fit under the TPM budget.
+        if LLM_MAX_TOKENS > RATE_LIMIT_RETRY_TOKENS:
+            logger.warning("rate-limited; retrying with max_tokens=%d",
+                           RATE_LIMIT_RETRY_TOKENS)
+            time.sleep(2)
+            try:
+                return _complete(RATE_LIMIT_RETRY_TOKENS)
+            except Exception as e2:
+                logger.error("OpenAI retry also failed: %s", e2)
+        return (
+            "⚠️ The AI request hit the OpenAI rate limit — the prompt was "
+            "too large or requests came too fast. The verified scanner "
+            "findings above are unaffected. Try again in a minute, or "
+            "narrow the question to specific files."
+        )
