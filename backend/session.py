@@ -58,9 +58,17 @@ class Session:
         # (the eval benchmark, minimal CI environments) must work
         # without the RAG stack (faiss/numpy/openai) installed —
         # and rag.py itself imports session for current().
+        #
+        # Backend is chosen by env: DATABASE_URL set -> pgvector
+        # (shared, survives restart); unset -> in-memory FAISS.
         if self._rag is None:
-            from backend.rag import RagStore
-            self._rag = RagStore()
+            from backend.store import pg_enabled
+            if pg_enabled():
+                from backend.rag import PgVectorStore
+                self._rag = PgVectorStore()
+            else:
+                from backend.rag import RagStore
+                self._rag = RagStore()
         return self._rag
 
 

@@ -6,6 +6,7 @@ import os
 import secrets as pysecrets
 import time
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -85,7 +86,20 @@ async def session_scope(request: Request):
     activate(request.headers.get("X-Session-Id"))
 
 
-app = FastAPI(dependencies=[Depends(require_api_key), Depends(session_scope)])
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Prepare external state backends when configured (pgvector schema
+    # + startup reset). A no-op when DATABASE_URL/REDIS_URL are unset,
+    # so local/dev/CI boot unchanged.
+    from backend.store import init_stores
+    init_stores()
+    yield
+
+
+app = FastAPI(
+    dependencies=[Depends(require_api_key), Depends(session_scope)],
+    lifespan=lifespan,
+)
 
 # =========================================================
 # REQUEST BODY SIZE LIMIT

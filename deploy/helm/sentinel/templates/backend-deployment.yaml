@@ -6,11 +6,14 @@ metadata:
     {{- include "sentinel.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
 spec:
-  # HARD CONSTRAINT — not tunable via values: sessions, file
-  # memory, and the FAISS index live in-process. Two replicas
-  # would split user sessions; Recreate (not RollingUpdate)
-  # because even a brief two-pod overlap does the same.
-  # Externalize state (Redis + vector store) before scaling.
+  # STILL replicas=1 — not yet tunable. Job state, session memory
+  # (Redis) and the RAG index (pgvector) are now externalized, but
+  # the scan workspace is still a pod-local directory the scanner
+  # subprocesses read from. Multiple replicas would each have their
+  # own workspace, so a request routed to the "wrong" pod would miss
+  # the uploaded files. Recreate (not RollingUpdate) avoids a brief
+  # two-pod overlap doing the same. Scaling out needs the workspace
+  # re-materialized from session state (deferred).
   replicas: 1
   strategy:
     type: Recreate
@@ -67,6 +70,23 @@ spec:
             # keys on a proxy IP instead of the real client.
             - name: SENTINEL_TRUSTED_PROXY_HOPS
               value: {{ if .Values.ingress.enabled }}"2"{{ else }}"1"{{ end }}
+            {{- if .Values.postgres.enabled }}
+            # RAG -> pgvector. Password comes from the secret; k8s expands
+            # $(POSTGRES_PASSWORD) into the URL so it's never in plaintext
+            # values or duplicated as a full-URL secret key.
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.existingSecret }}
+                  key: {{ .Values.postgres.auth.existingSecretPasswordKey }}
+            - name: DATABASE_URL
+              value: "postgresql://{{ .Values.postgres.auth.username }}:$(POSTGRES_PASSWORD)@{{ include "sentinel.fullname" . }}-postgres:5432/{{ .Values.postgres.auth.database }}"
+            {{- end }}
+            {{- if .Values.redis.enabled }}
+            # Jobs + session memory -> Redis (no auth; ClusterIP only).
+            - name: REDIS_URL
+              value: "redis://{{ include "sentinel.fullname" . }}-redis:6379/0"
+            {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           # Blocking work runs on worker threads so /health stays

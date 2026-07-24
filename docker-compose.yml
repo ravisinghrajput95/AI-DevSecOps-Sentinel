@@ -26,6 +26,10 @@ services:
       # Same-origin behind nginx, so CORS defaults are fine;
       # override only for split-origin deployments.
       SENTINEL_CORS_ORIGINS: ${SENTINEL_CORS_ORIGINS:-}
+      # Externalized state (see backend/store.py). Unset these to fall
+      # back to the in-process single-worker model.
+      DATABASE_URL: postgresql://sentinel:${POSTGRES_PASSWORD:-sentinel}@postgres:5432/sentinel
+      REDIS_URL: redis://redis:6379/0
     volumes:
       # Persist trivy's CVE DB and semgrep's ruleset between
       # restarts — first scan is slow without this.
@@ -37,8 +41,44 @@ services:
       retries: 3
       start_period: 15s
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     # No host port on purpose — the API is only reachable
     # through the nginx proxy in the frontend container.
+
+  # pgvector-enabled Postgres — the RAG vector store. The `vector`
+  # extension + schema are created by the app on startup (init_stores).
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinel}
+      POSTGRES_DB: sentinel
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # Redis — job registry + session memory.
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   frontend:
     build:
@@ -56,3 +96,5 @@ services:
 
 volumes:
   scanner-cache:
+  postgres-data:
+  redis-data:
