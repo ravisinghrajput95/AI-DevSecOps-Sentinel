@@ -4,7 +4,11 @@
 # Secrets are NEVER set here. Create them out-of-band once:
 #   kubectl create secret generic sentinel-secrets \
 #     --from-literal=OPENAI_API_KEY=sk-... \
-#     --from-literal=SENTINEL_API_KEY=...
+#     --from-literal=SENTINEL_API_KEY=... \
+#     --from-literal=POSTGRES_PASSWORD=...   # required when postgres.enabled
+# The backend and the postgres pod both read POSTGRES_PASSWORD from
+# this secret; DATABASE_URL is assembled from it in-cluster so the
+# password never appears in plaintext values.
 # Optional: add SENTRY_DSN to that same secret to enable error
 # tracking — envFrom loads it automatically, no chart change needed.
 # =========================================================
@@ -51,6 +55,40 @@ backend:
   cache:
     enabled: true
     size: 5Gi
+
+# =========================================================
+# External state backends (in-cluster). Disable either to fall
+# back to the in-process model — the backend reads DATABASE_URL /
+# REDIS_URL only when the matching toggle wires them in.
+# =========================================================
+postgres:
+  enabled: true # RAG -> pgvector
+  image: pgvector/pgvector:pg16
+  storage: 5Gi
+  auth:
+    username: sentinel
+    database: sentinel
+    # Key in .Values.backend.existingSecret holding the password.
+    existingSecretPasswordKey: POSTGRES_PASSWORD
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+redis:
+  enabled: true # jobs + session memory -> Redis
+  image: redis:7-alpine
+  storage: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
 frontend:
   image:

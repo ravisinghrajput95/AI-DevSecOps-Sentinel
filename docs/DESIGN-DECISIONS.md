@@ -146,33 +146,42 @@ UI rendering regressions. Unit tests can't see any of those.
 
 ## 2. Limitations & future work
 
-**All session state is in-process.** Sessions, the FAISS index, findings
-and job state live in memory in a single-worker pod, and the scan
-workspace is a local directory the scanner subprocesses read from.
+**Most session state is now externalizable; the workspace is not.** The
+RAG index (pgvector), job registry and session memory (Redis) move to
+shared stores when `DATABASE_URL` / `REDIS_URL` are set — see
+`backend/store.py`. Unset (the default for tests, evals and keyless
+runs), each falls back to its original in-process form, so nothing has to
+be provisioned to run the app. `docker compose up` and the Helm chart
+now bring up pgvector + Redis in-cluster by default.
 
-That means, honestly:
+What is **still** single-replica, honestly:
 
-- A pod restart loses conversation context and in-flight scans
-- The service can't run more than one replica — sessions wouldn't be shared
-- The workspace-on-disk coupling is the real constraint: with N replicas a
-  request can land on a pod that doesn't have the files
+- The scan **workspace** is a pod-local directory the scanner subprocesses
+  read from. With N replicas a request can land on a pod that doesn't hold
+  the files, so the backend Deployment stays `replicas: 1` / `Recreate`.
+- To match today's fresh-on-restart behavior (the workspace is wiped on
+  boot), startup also clears externalized **session** state — Redis session
+  keys and the `rag_chunks` table — while **preserving job keys**. That
+  reset is the one thing to remove when the workspace is re-materialized.
+- The redaction secret registry stays in-process (rebuilt as files are
+  re-processed).
 
-**This was a deliberate choice**, not an oversight: it keeps the system
-dependency-free and fast to run, which suits a single-tenant demo and
-lets the whole stack come up with `docker compose up`. Externalising it
-is well-understood work, not research:
+**This staging was deliberate.** The remaining work is well-understood, not
+research:
 
-| Change | Effort | Unlocks | Added infra cost |
-|---|---|---|---|
-| Job state → Redis (same pod) | 1–2 days | In-flight scans survive restart | Redis only |
-| RAG → pgvector | 3–4 days | Shared, persistent index | ~$25–70/mo |
-| Sessions → Redis + workspace re-materialisation | 4–6 days | True horizontal scaling | ~$35–50/mo |
-| Jobs → real queue + worker deployment | 4–6 days | Scans off the API pod | (shares Redis) |
+| Change | Status | Unlocks |
+|---|---|---|
+| Job state → Redis | ✅ done (opt-in via `REDIS_URL`) | Job state survives restart; shared across workers |
+| RAG → pgvector | ✅ done (opt-in via `DATABASE_URL`) | Shared, persistent index |
+| Session memory → Redis | ✅ done (opt-in via `REDIS_URL`) | Sessions shared across workers |
+| Workspace re-materialisation → `replicas > 1` | ⏳ next | True horizontal scaling |
+| Jobs → real queue + worker deployment | ⏳ next | Durable execution; scans off the API pod |
 
 The workspace fix — rebuilding the directory on a cache miss from file
-contents already held in session state — is ~2 days and is a prerequisite
-for both scaling and a separate worker, which is why doing these together
-costs less than doing them separately.
+contents already held in session state — is the prerequisite for both true
+scaling and a separate worker, which is why doing them together costs less
+than doing them separately. Until then a "running" job whose worker thread
+died on restart is orphaned and ages out via TTL.
 
 **Other known gaps:**
 

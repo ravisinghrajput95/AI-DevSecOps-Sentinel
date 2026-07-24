@@ -9,6 +9,15 @@ numpy==2.5.1
 prometheus-client==0.25.0
 sentry-sdk==2.66.0
 
+# External state backends. Only imported when REDIS_URL / DATABASE_URL
+# are set (see backend/store.py), so environments that never externalize
+# state still boot without a live Redis/Postgres.
+redis==5.2.1
+psycopg[binary]==3.2.13
+psycopg-pool==3.2.4
+pgvector==0.3.6
+
 # dev / test
 pytest==9.1.1
 httpx==0.28.1
+fakeredis==2.26.2

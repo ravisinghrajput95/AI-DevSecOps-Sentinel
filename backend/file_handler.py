@@ -211,12 +211,17 @@ def ingest_zip(zip_path, project_name=None):
             # Large files capped at 20k chars to avoid context overflow
             # =====================================================
 
-            memory["files"].append({
+            # Read-modify-write: under the Redis memory backend the list
+            # returned by memory["files"] is a fresh copy, so an in-place
+            # append would not persist.
+            files = memory["files"]
+            files.append({
                 "name": relative_path,
                 "content": content[:20000],      # full real content
                 "topic": "repository",
                 "project": project_name
             })
+            memory["files"] = files
 
             # =====================================================
             # INDEX FULL REAL CONTENT INTO RAG
@@ -275,12 +280,15 @@ def ingest_single_file(filepath, original_filename, project_name="default"):
     # Register credential values for LLM output scrubbing
     harvest_secrets(content)
 
-    memory["files"].append({
+    # Read-modify-write (see the repository-ingest note above).
+    files = memory["files"]
+    files.append({
         "name": original_filename,
         "content": content[:20000],
         "topic": "file",
         "project": project_name
     })
+    memory["files"] = files
 
     add_document(
         content=content,
