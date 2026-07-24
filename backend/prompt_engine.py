@@ -237,9 +237,12 @@ Low / Suggestions [CATEGORY] [Confidence: LEVEL]
 Recommendations Summary
 Ordered by Exploitability x Severity:
 
-[CRITICAL] [Exploitability: HIGH] Action at filename:line
-[HIGH] [Exploitability: HIGH] Action at filename:line
+[CRITICAL] [Exploitability: HIGH] <imperative fix action> at filename:line
+[HIGH] [Exploitability: HIGH] <imperative fix action> at filename:line
 ...
+(Each line is a REMEDIATION to perform — an imperative fix like
+"Pin base image to a digest" or "Parameterise the SQL query" — NOT a
+restatement of the finding title. Always end with " at filename:line".)
 
 
 REPOSITORY ZIP ANALYSIS FORMAT
@@ -578,10 +581,18 @@ GENERAL_MODE_STARTERS = [
 # =========================================================
 # GENERATION REQUEST — "write/rewrite me a <artifact>"
 # =========================================================
-_GEN_VERBS = (
-    "write", "generate", "create", "rewrite", "re-write", "produce",
-    "give me", "share", "provide", "make me", "draft", "build me",
-    "can you write", "could you write", "show me a", "show me an",
+# Verbs that unambiguously mean "produce this artifact for me". Paired
+# with an artifact they ARE a generation request on their own — no extra
+# hint needed ("write me a dockerfile", "generate a terraform module").
+_STRONG_GEN_VERBS = (
+    "write", "rewrite", "re-write", "generate", "create",
+    "draft", "scaffold", "produce", "make me", "build me",
+)
+# Verbs that are generative only in context — they also head analysis /
+# redirect asks ("give me the findings", "show me the dockerfile"), so
+# they still require a hint word before counting as generation.
+_WEAK_GEN_VERBS = (
+    "give me", "share", "provide", "show me a", "show me an",
 )
 _GEN_ARTIFACTS = (
     "dockerfile", "docker file", "docker-compose", "compose file",
@@ -595,17 +606,37 @@ _GEN_HINTS = (
     "corrected", "equivalent", "without vulnerabilities", "best practice",
     "production-ready", "production ready", "template", "example",
 )
+# Question / how-to phrasings WANT an explanation, not an artifact
+# ("how do I write a Dockerfile?", "does this Dockerfile expose a port?").
+# They must fall through to the knowledge / analysis modes even though
+# they contain a gen verb + artifact.
+_GEN_QUESTION_GUARDS = (
+    "how to", "how do i", "how do you", "how can i", "how would i",
+    "how should i", "what is", "what are", "why ", "when should",
+    "explain", "describe", "do you", "does ", "is ", "are ", "should i",
+)
 
 
 def is_generation_request(user_message: str) -> bool:
     """
-    True when the user wants an artifact WRITTEN, not audited — so the
-    turn produces the file instead of re-emitting the previous scan.
+    True when the user wants an artifact WRITTEN, not audited or explained —
+    so the turn produces the file instead of re-emitting the previous scan.
+
+    A strong generative verb + an artifact ("write me a dockerfile") is
+    enough on its own; weaker verbs ("give me", "share") still need a
+    hardening/example hint so they can't hijack an analysis turn. Question
+    phrasings ("how do I write a Dockerfile?") are excluded outright.
     """
-    msg = user_message.lower()
+    msg = user_message.lower().strip()
+
+    if any(msg.startswith(g) for g in _GEN_QUESTION_GUARDS):
+        return False
+    if not any(a in msg for a in _GEN_ARTIFACTS):
+        return False
+    if any(v in msg for v in _STRONG_GEN_VERBS):
+        return True
     return (
-        any(v in msg for v in _GEN_VERBS)
-        and any(a in msg for a in _GEN_ARTIFACTS)
+        any(v in msg for v in _WEAK_GEN_VERBS)
         and any(h in msg for h in _GEN_HINTS)
     )
 

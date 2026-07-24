@@ -79,6 +79,42 @@ def test_generation_routes_to_mode_2_5_without_files():
     assert "WRITE or REWRITE" in prompt
 
 
+# ---- BARE generation requests (no "hint" word) — reported: "write me a
+#      dockerfile" / "write me a terraform code" wrongly re-ran analysis ----
+
+@pytest.mark.parametrize("q", [
+    "write me a dockerfile",
+    "write me a terraform code",
+    "create a dockerfile for a node app",
+    "generate a terraform module",
+    "rewrite this dockerfile",
+    "build me a kubernetes deployment",
+])
+def test_bare_generation_requests_detected(q):
+    assert pe.is_generation_request(q) is True
+
+
+@pytest.mark.parametrize("q", [
+    "how do i write a dockerfile",          # wants an explanation
+    "how to create a helm chart",
+    "show me the dockerfile",               # display the uploaded one
+    "does this dockerfile expose a port",   # analysis question
+    "is this terraform secure",
+])
+def test_non_generation_requests_not_flagged(q):
+    assert pe.is_generation_request(q) is False
+
+
+def test_bare_generation_with_files_routes_to_mode_2_5():
+    # The exact reported bug: with files in context, "write me a dockerfile"
+    # must PRODUCE the file (MODE 2.5), not re-emit the previous scan.
+    _add_file()
+    prompt = pe.build_prompt("write me a dockerfile", [])
+    assert memory.get("_generation_turn") is True
+    assert memory.get("_analysis_turn") is False
+    assert "WRITE or REWRITE" in prompt
+
+
 def test_plain_and_knowledge_messages_are_not_generation_turns():
     memory["files"] = []
     for q in ("hello", "what is a dockerfile"):

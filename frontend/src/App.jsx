@@ -824,6 +824,71 @@ function MarkdownBlock({ text }) {
 }
 
 // =========================================================
+// RECOMMENDATIONS LIST
+// The model emits one action per line, e.g.
+//   [HIGH] [Exploitability: HIGH] <fix action> at <file>:<line>
+// Render each as a styled row (severity chip + exploitability
+// pill + action + file:line) so it reads like the finding
+// cards instead of a flat wall of bracketed text. Lines that
+// don't match fall back to inline text.
+// =========================================================
+
+const EXPLOIT_COLORS = { HIGH: "#ff8800", MEDIUM: "#d29922", LOW: "#8b949e" };
+
+function RecommendationList({ text }) {
+  const rows = [];
+  let key = 0;
+  for (const raw of (text || "").split("\n")) {
+    const line = raw.trim().replace(/^[-*]\s+/, "");
+    if (!line) continue;
+    // Drop the "Ordered by ..." caption — the section header already labels it.
+    if (/^ordered by/i.test(line)) continue;
+    const m = line.match(/^\[([A-Za-z]+)\]\s*\[Exploitability:\s*([A-Za-z]+)\]\s*(.+)$/i);
+    if (m) {
+      let action = m[3].trim();
+      let loc = null;
+      const locM = action.match(/\s+(?:at|in)\s+(\S+?:\d+)\s*$/i);
+      if (locM) { loc = locM[1]; action = action.slice(0, locM.index).trim(); }
+      rows.push({ key: key++, sev: m[1].toUpperCase(), exploit: m[2].toUpperCase(), action, loc });
+    } else {
+      rows.push({ key: key++, text: line });
+    }
+  }
+  if (rows.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      {rows.map((r) => r.text !== undefined ? (
+        <div key={r.key} style={{ color: "#c9d1d9", fontSize: "13px" }}><InlineText text={r.text} /></div>
+      ) : (
+        <div key={r.key} style={{
+          display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap",
+          background: "#161b22", border: "1px solid #21262d",
+          borderRadius: "6px", padding: "6px 10px"
+        }}>
+          <SeverityBadge level={r.sev} />
+          <span style={{
+            fontSize: "9.5px", fontWeight: "600", fontFamily: "monospace", flexShrink: 0,
+            color: EXPLOIT_COLORS[r.exploit] || "#8b949e",
+            border: `1px solid ${(EXPLOIT_COLORS[r.exploit] || "#8b949e")}44`,
+            borderRadius: "4px", padding: "1px 6px"
+          }}>EXPLOIT {r.exploit}</span>
+          <span style={{ color: "#e6edf3", fontSize: "13px", flex: "1 1 auto", minWidth: "140px" }}>
+            <InlineText text={r.action} />
+          </span>
+          {r.loc && (
+            <code style={{
+              fontSize: "11.5px", color: "#79c0ff", fontFamily: "monospace", flexShrink: 0,
+              background: "#0d1117", border: "1px solid #21262d",
+              borderRadius: "4px", padding: "1px 6px"
+            }}>{r.loc}</code>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// =========================================================
 // DIFF CODE BLOCK
 // =========================================================
 
@@ -1542,8 +1607,8 @@ function FileAnalysisCard({ block }) {
           )}
           {block.recommendations && (
             <div style={{ background: "#0d1117", borderRadius: "6px", padding: "8px 12px", marginBottom: "10px" }}>
-              <div style={{ fontSize: "9px", color: "#8b949e", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "5px" }}>Recommendations</div>
-              <MarkdownBlock text={block.recommendations} />
+              <div style={{ fontSize: "9px", color: "#8b949e", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "7px" }}>Recommendations</div>
+              <RecommendationList text={block.recommendations} />
             </div>
           )}
           {block.crossFile && (
