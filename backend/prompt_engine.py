@@ -1011,6 +1011,14 @@ def build_full_file_context() -> str:
     # scanner findings + RAG + instructions) stays inside low-tier
     # OpenAI TPM limits (30k tokens/min for gpt-4o).
     char_limit = int(os.environ.get("SENTINEL_FILE_CONTEXT_CHARS", "40000"))
+    # Repo-sized scans: the many verified findings ARE the security signal,
+    # so raw file text adds little but a lot of tokens. Shrink the file
+    # context so a big-repo question doesn't blow the account's TPM budget
+    # (the 869-finding case 429'd even after the reduced-reservation retry).
+    findings_n = len((memory.get("scan") or {}).get("findings", []) or [])
+    if findings_n > SCANNER_ROLLUP_THRESHOLD:
+        char_limit = min(char_limit,
+                         int(os.environ.get("SENTINEL_FILE_CONTEXT_CHARS_LARGE", "12000")))
 
     for f in memory["files"]:
         name = f.get("name", "unknown")

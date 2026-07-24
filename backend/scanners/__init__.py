@@ -25,6 +25,7 @@ from backend.scanners import (
     shellcheck_scanner,
     actionlint_scanner,
     injection_scanner,
+    report_scanner,
 )
 
 SCANNERS = [
@@ -37,6 +38,7 @@ SCANNERS = [
     shellcheck_scanner,  # shell script analysis
     actionlint_scanner,  # GitHub Actions workflow security
     injection_scanner,   # prompt-injection attempts (built-in)
+    report_scanner,      # import uploaded Trivy/SARIF reports + SBOMs
 ]
 
 
