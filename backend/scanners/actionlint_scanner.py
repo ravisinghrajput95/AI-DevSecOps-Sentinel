@@ -7,6 +7,7 @@
 
 import json
 import os
+import re
 
 from backend.scanners.base import is_available, make_finding, run_command
 
@@ -21,15 +22,35 @@ def available() -> bool:
     return is_available(TOOL)
 
 
+_WF_ON = re.compile(r"(?m)^on\s*:")
+_WF_JOBS = re.compile(r"(?m)^jobs\s*:")
+
+
+def _looks_like_workflow(path: str) -> bool:
+    """A YAML with top-level `on:` and `jobs:` is a GitHub Actions workflow,
+    even when uploaded standalone (outside .github/workflows/)."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            head = f.read(4000)
+    except Exception:
+        return False
+    return bool(_WF_ON.search(head)) and bool(_WF_JOBS.search(head))
+
+
 def _workflow_files(workspace_dir: str) -> list:
     workflows = []
     for root, _dirs, files in os.walk(workspace_dir):
         norm = root.replace("\\", "/")
-        if "/.github/workflows" not in f"/{norm}/":
-            continue
+        in_wf_dir = "/.github/workflows" in f"/{norm}/"
         for name in files:
-            if name.lower().endswith((".yml", ".yaml")):
-                workflows.append(os.path.join(root, name))
+            if not name.lower().endswith((".yml", ".yaml")):
+                continue
+            path = os.path.join(root, name)
+            # Lint files in .github/workflows/ OR any standalone YAML that
+            # is structurally a workflow — so a bare "ci.yml" upload still
+            # gets its expression-injection / unpinned-action checks.
+            if in_wf_dir or _looks_like_workflow(path):
+                workflows.append(path)
     return workflows
 
 
