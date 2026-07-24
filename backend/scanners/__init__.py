@@ -26,6 +26,7 @@ from backend.scanners import (
     actionlint_scanner,
     injection_scanner,
     report_scanner,
+    ansible_scanner,
 )
 
 SCANNERS = [
@@ -39,6 +40,7 @@ SCANNERS = [
     actionlint_scanner,  # GitHub Actions workflow security
     injection_scanner,   # prompt-injection attempts (built-in)
     report_scanner,      # import uploaded Trivy/SARIF reports + SBOMs
+    ansible_scanner,     # Ansible playbook security risks (built-in)
 ]
 
 
