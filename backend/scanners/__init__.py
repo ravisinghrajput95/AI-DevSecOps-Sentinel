@@ -8,6 +8,7 @@
 
 import time
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 
 from backend import metrics
 from backend.logging_setup import get_logger
@@ -39,8 +40,18 @@ SCANNERS = [
 ]
 
 
+@lru_cache(maxsize=1)
 def scanner_status() -> dict:
-    """Availability of each registered scanner (for /health)."""
+    """
+    Availability of each registered scanner (for /health). CACHED: the
+    scanner binaries are baked into the image at build time and never
+    change at runtime, so this must never pay a per-call cost. It used
+    to run shutil.which() x9 on the async event loop on every probe —
+    under heavy scan I/O that could exceed the readiness timeout and
+    evict the single backend pod from its Service (a burst of connection
+    errors, since replicas=1 has no peer to absorb it). A cached dict
+    lookup makes /health effectively free and immune to load.
+    """
     return {s.TOOL: s.available() for s in SCANNERS}
 
 
