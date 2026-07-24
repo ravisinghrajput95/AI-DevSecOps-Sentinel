@@ -47,10 +47,16 @@ def scan(workspace_dir: str) -> list:
     # rate-limited, and make results non-deterministic. Lockfile-based
     # detection (npm/pip/go/...) is fully local. The vulnerability DB
     # download on first run is separate and unaffected.
+    # 120s (not 300s): a lone dependency manifest must never pin the
+    # synchronous /chat request for minutes — a slow scan that overruns
+    # this fails fast and surfaces as a missing tool rather than stalling
+    # the single backend worker (which can cascade into a readiness-probe
+    # eviction). The one-time vuln-DB download on a cold cache is the only
+    # case that legitimately approaches this; it self-heals on the next scan.
     result = run_command(
         [TOOL, "fs", "--scanners", "vuln", "--offline-scan",
          "--format", "json", "--quiet", workspace_dir],
-        timeout=300,
+        timeout=120,
     )
     if not result.stdout.strip():
         # A hard failure (e.g. DB download error) must surface as a
