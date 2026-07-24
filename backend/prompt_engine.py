@@ -1017,8 +1017,12 @@ def build_full_file_context() -> str:
     # (the 869-finding case 429'd even after the reduced-reservation retry).
     findings_n = len((memory.get("scan") or {}).get("findings", []) or [])
     if findings_n > SCANNER_ROLLUP_THRESHOLD:
+        # Repo-sized scans: keep the raw file context minimal — the verified
+        # findings carry the answer. 4k chars (~1k tokens) leaves real
+        # headroom under a low OpenAI chat-TPM tier, where the 869-finding
+        # terragoat question 429'd intermittently at 12k.
         char_limit = min(char_limit,
-                         int(os.environ.get("SENTINEL_FILE_CONTEXT_CHARS_LARGE", "12000")))
+                         int(os.environ.get("SENTINEL_FILE_CONTEXT_CHARS_LARGE", "4000")))
 
     for f in memory["files"]:
         name = f.get("name", "unknown")

@@ -37,13 +37,35 @@ def get_embedding(text):
     return response.data[0].embedding
 
 
+# text-embedding-3-small caps a single request at 300k tokens. A large
+# file's chunks summed past that (observed: 603k -> 400 error), so RAG
+# indexing silently failed for big files. Sub-batch under a safe budget.
+_EMBED_TOKEN_BUDGET = 250_000
+
+
 def get_embeddings(texts: list) -> list:
-    """Batched embeddings — one API call for all chunks of a file."""
-    response = get_client().embeddings.create(
-        model="text-embedding-3-small",
-        input=texts
-    )
-    return [item.embedding for item in response.data]
+    """Batched embeddings, sub-batched so no request exceeds the per-request
+    token cap. Order is preserved."""
+    out = []
+    batch, batch_tokens = [], 0
+
+    def flush():
+        nonlocal batch, batch_tokens
+        if not batch:
+            return
+        response = get_client().embeddings.create(
+            model="text-embedding-3-small", input=batch)
+        out.extend(item.embedding for item in response.data)
+        batch, batch_tokens = [], 0
+
+    for text in texts:
+        est = len(text) // 4 + 1          # ~4 chars/token
+        if batch and batch_tokens + est > _EMBED_TOKEN_BUDGET:
+            flush()
+        batch.append(text)
+        batch_tokens += est
+    flush()
+    return out
 
 # =========================================================
 # HYBRID RANKING — shared by both backends so retrieval
