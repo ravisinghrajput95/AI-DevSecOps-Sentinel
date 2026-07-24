@@ -29,7 +29,7 @@ def test_large_scan_shrinks_file_context():
     memory["scan"] = {"findings": [{"severity": "HIGH", "file": "a", "line": 1}
                                    for _ in range(60)]}   # > rollup threshold
     ctx = pe.build_full_file_context()
-    assert len(ctx) <= 13000     # shrunk toward the 12k large-repo budget
+    assert len(ctx) <= 6000      # shrunk toward the 4k large-repo budget
 
 
 def test_small_scan_keeps_full_context():
