@@ -132,6 +132,28 @@ on-prem / k3s). Clusters are provisioned with **Terraform**, images live in
 a container registry, and CI→cloud auth is keyless via **OIDC**. Full
 per-platform steps: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
+## Design decision — no LLM orchestration framework
+
+Sentinel deliberately does **not** use LangChain, LangGraph, or LangSmith.
+The runtime is a linear, deterministic pipeline: one LLM call per request,
+rule-based intent routing *before* the model is ever invoked, and grounded
+prompt construction that enforces the `[SCANNER-VERIFIED]` / `[AI-DETECTED]`
+invariant. That design has no agent loops or orchestration state for such a
+framework to manage — and for a security tool, an auditable single-call path
+is safer than an agentic one.
+
+- **LangChain** would abstract over logic that is already explicit, and would
+  insert itself exactly where secret redaction and finding-grounding live.
+- **LangGraph** targets agentic, multi-step, branching workflows — Sentinel
+  has none by design.
+- **LangSmith** overlaps the existing Prometheus + Sentry + `evals/` harness,
+  and would ship prompts and completions to an external SaaS, conflicting with
+  the "secret values never leave at the code level" guarantee.
+
+**Revisit trigger:** a product shift toward genuinely agentic behavior (the
+LLM driving scanner selection, multi-hop investigation, or iterative
+remediation) — at which point **LangGraph** is the only one worth reconsidering.
+
 ---
 
 # 🚀 Features
